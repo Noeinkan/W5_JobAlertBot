@@ -1,0 +1,19 @@
+[Unit]
+Description=Job Alert Discord Bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/opt/job-alert-bot
+ExecStart=/usr/bin/node /opt/job-alert-bot/src/index.js
+Restart=always
+RestartSec=10
+Environment=NODE_ENV=production
+EnvironmentFile=/opt/job-alert-bot/.env
+StandardOutput=append:/opt/job-alert-bot/logs/systemd-out.log
+StandardError=append:/opt/job-alert-bot/logs/systemd-error.log
+
+[Install]
+WantedBy=multi-user.target
