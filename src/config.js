@@ -2,7 +2,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import dotenv from 'dotenv';
 
-dotenv.config();
+dotenv.config({
+  path: path.resolve(process.cwd(), '.env'),
+  override: true,
+});
 
 const dataDir = path.resolve(process.cwd(), 'data');
 const searchesPath = path.join(dataDir, 'searches.json');
@@ -132,6 +135,7 @@ function normalizeSearch(search, defaults) {
     allowed_sources: allowedSources,
     exclude_keywords: Array.from(new Set(excludeKeywords)),
     source_options: search.source_options && typeof search.source_options === 'object' ? search.source_options : {},
+    category: search.category ?? null,
   };
 }
 
@@ -189,7 +193,7 @@ export function getConfiguredSources() {
   return {
     adzuna: Boolean(env.adzunaAppId && env.adzunaAppKey),
     reed: Boolean(env.reedApiKey),
-    serper: Boolean(env.serperApiKey),
+    linkedin: true,
   };
 }
 
@@ -226,6 +230,6 @@ export function getSourceLabel(source) {
   return {
     adzuna: 'Adzuna',
     reed: 'Reed',
-    serper: 'Serper',
+    linkedin: 'LinkedIn',
   }[source] ?? source;
 }

@@ -1,78 +1,144 @@
 {
   "defaults": {
     "location": "London",
-    "distance_from_location": 10,
-    "allowed_sources": ["adzuna", "reed", "serper"],
+    "distance_from_location": 15,
+    "allowed_sources": ["adzuna", "reed", "linkedin"],
     "exclude_keywords": [],
     "tags": []
   },
   "searches": [
     {
-      "id": "bim_lead",
-      "name": "BIM leadership roles",
-      "enabled": true,
-      "keywords": ["BIM Lead", "BIM Manager", "Head of BIM"],
+      "id": "senior_bim_manager",
+      "keywords": "Senior BIM Manager",
       "location": "London",
       "min_salary": 70000,
-      "tags": ["bim_lead", "permanent"],
-      "allowed_sources": ["adzuna", "reed", "serper"],
-      "source_options": {
-        "adzuna": {
-          "category": "it-jobs"
-        }
-      }
+      "category": "engineering-jobs"
     },
     {
-      "id": "digital_delivery",
-      "name": "Digital delivery leadership",
-      "enabled": true,
-      "keywords": ["Digital Delivery Lead", "Digital Delivery Manager"],
+      "id": "head_of_bim",
+      "keywords": "Head of BIM",
       "location": "London",
-      "min_salary": 80000,
-      "tags": ["digital_delivery", "permanent"],
-      "allowed_sources": ["adzuna", "reed", "serper"]
+      "min_salary": null,
+      "category": "engineering-jobs"
     },
     {
-      "id": "information_management",
-      "name": "Information management",
-      "enabled": true,
-      "keywords": ["Information Manager ISO 19650", "Information Management Lead"],
+      "id": "bim_director",
+      "keywords": "BIM Director",
       "location": "London",
-      "min_salary": 60000,
-      "tags": ["information_management", "permanent"],
-      "allowed_sources": ["adzuna", "reed", "serper"]
+      "min_salary": null,
+      "category": "engineering-jobs"
+    },
+    {
+      "id": "associate_director_bim",
+      "keywords": "Associate Director BIM",
+      "location": "London",
+      "min_salary": null,
+      "category": "engineering-jobs"
+    },
+    {
+      "id": "associate_director_digital",
+      "keywords": "Associate Director digital construction",
+      "location": "London",
+      "min_salary": null,
+      "category": "engineering-jobs"
     },
     {
       "id": "head_digital_construction",
-      "name": "Head of digital construction",
-      "enabled": true,
-      "keywords": ["Head of Digital construction", "Director Digital construction", "Digital Transformation Lead AEC"],
-      "location": "London",
-      "min_salary": 90000,
-      "tags": ["head_digital_construction", "permanent"],
-      "allowed_sources": ["adzuna", "reed", "serper"]
-    },
-    {
-      "id": "cde_architect",
-      "name": "CDE and solution architecture",
-      "enabled": true,
-      "keywords": ["CDE architect", "Common Data Environment", "CDE Solution"],
-      "location": "London",
-      "min_salary": 70000,
-      "tags": ["cde_architect", "permanent"],
-      "allowed_sources": ["adzuna", "reed", "serper"]
-    },
-    {
-      "id": "contract_bim",
-      "name": "Contract BIM roles",
-      "enabled": true,
-      "keywords": ["BIM Manager contract", "Information Manager contract infrastructure"],
+      "keywords": "Head of Digital construction",
       "location": "London",
       "min_salary": null,
-      "contract_only": true,
-      "tags": ["contract_bim", "contract"],
-      "allowed_sources": ["adzuna", "reed", "serper"],
-      "exclude_keywords": ["graduate", "junior", "trainee"]
+      "category": null
+    },
+    {
+      "id": "head_information_management",
+      "keywords": "Head of Information Management",
+      "location": "London",
+      "min_salary": null,
+      "category": null
+    },
+    {
+      "id": "digital_delivery_lead",
+      "keywords": "\"Digital Delivery Lead\"",
+      "location": "London",
+      "min_salary": 80000,
+      "category": null
+    },
+    {
+      "id": "digital_delivery_director",
+      "keywords": "Digital Delivery Director",
+      "location": "London",
+      "min_salary": null,
+      "category": null
+    },
+    {
+      "id": "iso19650_senior",
+      "keywords": "ISO 19650 Senior OR Lead OR Manager",
+      "location": "London",
+      "min_salary": null,
+      "category": null
+    },
+    {
+      "id": "cde_solution_architect",
+      "keywords": "CDE Solution Architect OR \"Common Data Environment\" Lead",
+      "location": "London",
+      "min_salary": null,
+      "category": null
+    },
+    {
+      "id": "digital_twin_lead",
+      "keywords": "Digital Twin Lead OR Manager infrastructure",
+      "location": "London",
+      "min_salary": null,
+      "category": "engineering-jobs"
+    },
+    {
+      "id": "contract_bim_senior",
+      "keywords": "Senior BIM Manager contract OR \"BIM Lead\" contract",
+      "location": "London",
+      "min_salary": null,
+      "category": "engineering-jobs"
+    },
+    {
+      "id": "contract_information_manager",
+      "keywords": "\"Information Manager\" contract infrastructure",
+      "location": "London",
+      "min_salary": null,
+      "category": null
+    },
+    {
+      "id": "contract_digital_lead",
+      "keywords": "\"Digital Delivery\" contract OR \"Digital Construction\" contract",
+      "location": "London",
+      "min_salary": null,
+      "category": null
+    },
+    {
+      "id": "national_grid_digital",
+      "keywords": "National Grid digital OR BIM",
+      "location": null,
+      "min_salary": null,
+      "category": null
+    },
+    {
+      "id": "energy_digital_lead",
+      "keywords": "energy digital lead infrastructure BIM",
+      "location": "London",
+      "min_salary": null,
+      "category": null
+    },
+    {
+      "id": "remote_bim_lead",
+      "keywords": "BIM Lead OR \"BIM Manager\" remote OR hybrid",
+      "location": null,
+      "min_salary": 80000,
+      "category": "engineering-jobs"
+    },
+    {
+      "id": "remote_head_digital",
+      "keywords": "\"Head of Digital\" construction OR infrastructure",
+      "location": null,
+      "min_salary": null,
+      "category": null
     }
   ]
 }

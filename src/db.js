@@ -95,6 +95,30 @@ function createStatements(db) {
       WHERE found_at >= ?
         AND found_at < ?
     `),
+    pendingJobsStatement: db.prepare(`
+      SELECT
+        external_id,
+        source,
+        title,
+        company,
+        location,
+        salary_min,
+        salary_max,
+        url,
+        search_id,
+        is_contract,
+        posted_at
+      FROM jobs
+      WHERE notified = 0
+      ORDER BY found_at ASC, id ASC
+    `),
+    jobsTodayListStatement: db.prepare(`
+      SELECT title, company, source
+      FROM jobs
+      WHERE found_at >= ?
+        AND found_at < ?
+      ORDER BY found_at ASC
+    `),
   };
 }
 
@@ -162,6 +186,25 @@ export function createDatabase(databasePath = appConfig.dbPath) {
         bySearch: statements.jobsBySearchStatement.all(),
       };
     },
+    getJobsToday() {
+      const bounds = getLondonDayBounds();
+      return statements.jobsTodayListStatement.all(bounds.start, bounds.end);
+    },
+    getPendingJobs() {
+      return statements.pendingJobsStatement.all().map((job) => ({
+        externalId: job.external_id,
+        source: job.source,
+        title: job.title,
+        company: job.company,
+        location: job.location,
+        salaryMin: job.salary_min,
+        salaryMax: job.salary_max,
+        url: job.url,
+        searchId: job.search_id,
+        isContract: Boolean(job.is_contract),
+        postedAt: job.posted_at,
+      }));
+    },
     close() {
       db.close();
     },
@@ -184,4 +227,12 @@ export function logRun(run) {
 
 export function getStats() {
   return defaultDatabase.getStats();
+}
+
+export function getJobsToday() {
+  return defaultDatabase.getJobsToday();
+}
+
+export function getPendingJobs() {
+  return defaultDatabase.getPendingJobs();
 }

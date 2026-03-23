@@ -9,6 +9,57 @@ import {
   SlashCommandBuilder,
 } from 'discord.js';
 import { env, getSourceLabel } from './config.js';
+import { isSeniorEnough } from './utils/seniority.js';
+
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function chunk(items, size) {
+  const chunks = [];
+
+  for (let index = 0; index < items.length; index += size) {
+    chunks.push(items.slice(index, index + size));
+  }
+
+  return chunks;
+}
+
+function getRetryAfterMs(error) {
+  const retryAfterSeconds = Number(error?.response?.headers?.['retry-after']);
+
+  if (Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0) {
+    return retryAfterSeconds * 1000;
+  }
+
+  const retryAfterMs = Number(error?.response?.data?.retry_after);
+
+  if (Number.isFinite(retryAfterMs) && retryAfterMs > 0) {
+    return retryAfterMs;
+  }
+
+  return 1500;
+}
+
+async function postWebhookPayload(webhookUrl, payload) {
+  let attempt = 0;
+
+  while (attempt < 5) {
+    try {
+      await axios.post(webhookUrl, payload);
+      return;
+    } catch (error) {
+      if (error?.response?.status !== 429) {
+        throw error;
+      }
+
+      attempt += 1;
+      await delay(getRetryAfterMs(error));
+    }
+  }
+
+  throw new Error('Discord webhook rate limit retry budget exhausted.');
+}
 
 const commandDefinitions = [
   new SlashCommandBuilder()
@@ -78,7 +129,11 @@ export function buildJobEmbed(job) {
     ? job.tags.map((tag) => `#${tag}`).join(' ')
     : `#${job.searchId} ${job.isContract ? '#contract' : '#permanent'}`;
 
-  return new EmbedBuilder()
+  const applyLine = job.url ? `[Apply Here](${job.url})` : 'Apply link unavailable';
+  const matchReason = job.seniorityReason ?? isSeniorEnough(job).reason;
+  const matchLine = matchReason ? `\u2705 Match: ${matchReason}` : null;
+
+  const embed = new EmbedBuilder()
     .setColor(color)
     .setTitle(`${job.isContract ? '🔵' : '🟢'} ${banner}`)
     .setDescription([
@@ -88,9 +143,16 @@ export function buildJobEmbed(job) {
       `💰 ${job.salaryText || 'Salary not listed'}`,
       `📅 Posted: ${getPostedText(job.postedAt)}`,
       `🔗 Source: ${getSourceLabel(job.source)}`,
-      `[Apply Here](${job.url})`,
+      matchLine,
+      applyLine,
       `Tags: ${tags}`,
-    ].join('\n'));
+    ].filter(Boolean).join('\n'));
+
+  if (job.url) {
+    embed.setURL(job.url);
+  }
+
+  return embed;
 }
 
 export async function sendJobAlert(channel, job) {
@@ -100,10 +162,23 @@ export async function sendJobAlert(channel, job) {
 }
 
 export async function sendJobAlertWebhook(webhookUrl, job) {
-  await axios.post(webhookUrl, {
+  await postWebhookPayload(webhookUrl, {
     embeds: [buildJobEmbed(job).toJSON()],
     allowed_mentions: { parse: [] },
   });
+}
+
+export async function sendJobAlertsWebhook(webhookUrl, jobs) {
+  const embeds = jobs.map((job) => buildJobEmbed(job).toJSON());
+  const batches = chunk(embeds, 10);
+
+  for (const batch of batches) {
+    await postWebhookPayload(webhookUrl, {
+      embeds: batch,
+      allowed_mentions: { parse: [] },
+    });
+    await delay(500);
+  }
 }
 
 export async function sendStartupMessage(channel, nextRunText, enabledSources) {
@@ -129,7 +204,7 @@ export async function sendStartupMessageWebhook(webhookUrl, nextRunText, enabled
       `Enabled sources: ${enabledSources.join(', ') || 'none'}`,
     ].join('\n'));
 
-  await axios.post(webhookUrl, {
+  await postWebhookPayload(webhookUrl, {
     embeds: [embed.toJSON()],
     allowed_mentions: { parse: [] },
   });
@@ -160,6 +235,64 @@ export function buildStatsEmbed(stats) {
         value: searchLines,
       }
     );
+}
+
+export function buildDailySummaryMessage({ jobsToday, totalJobs, enabledSources, nextRunText }) {
+  const formatter = new Intl.DateTimeFormat('en-GB', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+    timeZone: 'Europe/London',
+  });
+  const dateStr = formatter.format(new Date());
+
+  if (jobsToday.length === 0) {
+    return {
+      content: [
+        `📊 **Daily Summary — ${dateStr}**`,
+        'No new relevant jobs found today. Keep grinding 💪',
+        `Next scan: ${nextRunText}`,
+      ].join('\n'),
+    };
+  }
+
+  const sourceStatus = enabledSources.map((s) => `${getSourceLabel(s)} ✅`).join(' ');
+  const jobLines = jobsToday.map((job, index) => {
+    const prefix = index === jobsToday.length - 1 ? '└──' : '├──';
+    return `${prefix} ${job.title} at ${job.company} (${getSourceLabel(job.source)})`;
+  });
+
+  return {
+    content: [
+      `📊 **Daily Job Search Summary — ${dateStr}**`,
+      `Jobs found today: ${jobsToday.length}`,
+      ...jobLines,
+      `Total jobs tracked: ${totalJobs}`,
+      `Sources checked: ${sourceStatus}`,
+      `Next scan: ${nextRunText}`,
+    ].join('\n'),
+  };
+}
+
+export async function sendNoNewJobsMessage(channel) {
+  await channel.send({ content: 'No new jobs found this run.' });
+}
+
+export async function sendNoNewJobsMessageWebhook(webhookUrl) {
+  await postWebhookPayload(webhookUrl, {
+    content: 'No new jobs found this run.',
+    allowed_mentions: { parse: [] },
+  });
+}
+
+export async function sendDailySummary(channel, summaryData) {
+  const message = buildDailySummaryMessage(summaryData);
+  await channel.send(message);
+}
+
+export async function sendDailySummaryWebhook(webhookUrl, summaryData) {
+  const message = buildDailySummaryMessage(summaryData);
+  await postWebhookPayload(webhookUrl, { ...message, allowed_mentions: { parse: [] } });
 }
 
 export function buildHealthEmbed(health) {

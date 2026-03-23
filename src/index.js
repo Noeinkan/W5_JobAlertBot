@@ -8,27 +8,32 @@ import {
   hasDiscordWebhookConfig,
   loadSearches,
 } from './config.js';
-import { getStats, insertJob, logRun, markJobNotified } from './db.js';
+import { getJobsToday, getPendingJobs, getStats, insertJob, logRun, markJobNotified } from './db.js';
 import {
   buildHealthEmbed,
   buildStatsEmbed,
   createDiscordClient,
   getAlertChannel,
   registerSlashCommands,
+  sendDailySummary,
+  sendDailySummaryWebhook,
   sendJobAlert,
-  sendJobAlertWebhook,
+  sendJobAlertsWebhook,
+  sendNoNewJobsMessage,
+  sendNoNewJobsMessageWebhook,
   sendStartupMessage,
   sendStartupMessageWebhook,
 } from './discord.js';
 import { adzunaSource } from './sources/adzuna.js';
+import { linkedinSource } from './sources/linkedin.js';
 import { reedSource } from './sources/reed.js';
-import { serperSource } from './sources/serper.js';
 import { logger } from './utils/logger.js';
 import { jobMatchesSearch, sourceAllowed } from './utils/search.js';
 import { passesMinimumSalary } from './utils/salary.js';
+import { isSeniorEnough } from './utils/seniority.js';
 
 const client = hasDiscordBotConfig() ? createDiscordClient() : null;
-const sourceClients = [adzunaSource, reedSource, serperSource];
+const sourceClients = [adzunaSource, reedSource, linkedinSource];
 
 let isRunInProgress = false;
 let startupMessageSent = false;
@@ -115,6 +120,12 @@ async function runSearchCycle(trigger = 'scheduled') {
   const newJobs = [];
   let totalResults = 0;
   let failedSources = 0;
+  const cycleStats = {
+    rawFetched: 0,
+    filteredNotRelevant: 0,
+    filteredTooJunior: 0,
+    alreadySeen: 0,
+  };
 
   logger.info('Starting search cycle', {
     trigger,
@@ -139,31 +150,49 @@ async function runSearchCycle(trigger = 'scheduled') {
         await delay(Math.max(0, env.apiDelayMs));
 
         try {
-          const jobs = await sourceClient.fetchJobs(search);
-          const filteredJobs = jobs
+          const rawJobs = await sourceClient.fetchJobs(search);
+          const relevantJobs = rawJobs
             .filter((job) => jobMatchesSearch(job, search))
-            .filter((job) => passesMinimumSalary(job, search.min_salary))
-            .map((job) => ({
+            .filter((job) => passesMinimumSalary(job, search.min_salary));
+
+          cycleStats.rawFetched += rawJobs.length;
+          cycleStats.filteredNotRelevant += rawJobs.length - relevantJobs.length;
+
+          const seniorJobs = [];
+
+          for (const job of relevantJobs) {
+            const check = isSeniorEnough(job);
+
+            if (!check.passes) {
+              cycleStats.filteredTooJunior += 1;
+              continue;
+            }
+
+            seniorJobs.push({
               ...job,
               tags: job.tags ?? search.tags,
-            }));
-          totalResults += filteredJobs.length;
+              seniorityReason: check.reason,
+            });
+          }
 
+          totalResults += seniorJobs.length;
           let newJobsForRunLog = 0;
 
-          for (const job of filteredJobs) {
+          for (const job of seniorJobs) {
             const inserted = insertJob(job);
 
             if (inserted) {
               newJobs.push(job);
               newJobsForRunLog += 1;
+            } else {
+              cycleStats.alreadySeen += 1;
             }
           }
 
           logRun({
             source: sourceClient.name,
             searchId: search.id,
-            resultsFound: filteredJobs.length,
+            resultsFound: seniorJobs.length,
             newJobs: newJobsForRunLog,
           });
         } catch (error) {
@@ -184,26 +213,39 @@ async function runSearchCycle(trigger = 'scheduled') {
       }
     }
 
-    if (newJobs.length > 0) {
+    const pendingJobs = getPendingJobs();
+
+    if (pendingJobs.length > 0) {
       if (hasDiscordWebhookConfig()) {
-        for (const job of newJobs) {
-          await sendJobAlertWebhook(env.discordWebhookUrl, job);
+        await sendJobAlertsWebhook(env.discordWebhookUrl, pendingJobs);
+        for (const job of pendingJobs) {
           markJobNotified(job);
         }
       } else if (client) {
         const channel = await getAlertChannel(client);
 
-        for (const job of newJobs) {
+        for (const job of pendingJobs) {
           await sendJobAlert(channel, job);
           markJobNotified(job);
         }
+      }
+    } else {
+      if (hasDiscordWebhookConfig()) {
+        await sendNoNewJobsMessageWebhook(env.discordWebhookUrl);
+      } else if (client) {
+        const channel = await getAlertChannel(client);
+        await sendNoNewJobsMessage(channel);
       }
     }
 
     logger.info('Search cycle complete', {
       trigger,
-      totalResults,
-      newJobs: newJobs.length,
+      totalResultsFetched: cycleStats.rawFetched,
+      filteredNotRelevant: cycleStats.filteredNotRelevant,
+      filteredTooJunior: cycleStats.filteredTooJunior,
+      newJobsMatchingCriteria: newJobs.length,
+      alreadySeen: cycleStats.alreadySeen,
+      sentToDiscord: pendingJobs.length,
       failedSources,
     });
 
@@ -226,6 +268,26 @@ async function runSearchCycle(trigger = 'scheduled') {
   }
 }
 
+async function runDailySummary() {
+  const stats = getStats();
+  const jobsToday = getJobsToday();
+  const summaryData = {
+    jobsToday,
+    totalJobs: stats.totalJobs,
+    enabledSources: getEnabledSourceNames(),
+    nextRunText: getNextRunText(),
+  };
+
+  if (hasDiscordWebhookConfig()) {
+    await sendDailySummaryWebhook(env.discordWebhookUrl, summaryData);
+  } else if (client) {
+    const channel = await getAlertChannel(client);
+    await sendDailySummary(channel, summaryData);
+  }
+
+  logger.info('Daily summary sent', { jobsToday: jobsToday.length });
+}
+
 async function handleReady() {
   if (!client) {
     return;
@@ -242,6 +304,20 @@ async function handleReady() {
     appConfig.scheduleExpression,
     async () => {
       await runSearchCycle('scheduled');
+    },
+    {
+      timezone: appConfig.timezone,
+    }
+  );
+
+  cron.schedule(
+    '0 20 * * *',
+    async () => {
+      try {
+        await runDailySummary();
+      } catch (error) {
+        logger.error('Daily summary failed', { message: error.message });
+      }
     },
     {
       timezone: appConfig.timezone,

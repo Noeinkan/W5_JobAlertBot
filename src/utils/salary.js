@@ -87,7 +87,7 @@ export function buildSalaryInfo({ title = '', description = '', extensions = [],
 
   const normalizedMin = explicitRange?.min ?? fallbackMin;
   const normalizedMax = explicitRange?.max ?? fallbackMax;
-  const rateSuffix = inferredContract ? '/day' : '';
+  const rateSuffix = isDaily ? '/day' : '';
   const ir35 = outsideIr35Pattern.test(combinedText)
     ? ' Outside IR35'
     : insideIr35Pattern.test(combinedText)

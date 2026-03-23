@@ -2,9 +2,11 @@ import axios from 'axios';
 import { appConfig, env } from '../config.js';
 import { withRetry } from '../utils/http.js';
 import { buildSalaryInfo } from '../utils/salary.js';
+import { isRelevantJob } from '../utils/relevance.js';
+import { logger } from '../utils/logger.js';
 
 const cache = new Map();
-const baseUrl = 'https://google.serper.dev/jobs';
+const baseUrl = 'https://google.serper.dev/search';
 
 function getCacheKey(search) {
   return `${search.keywords}::${search.location}`;
@@ -31,9 +33,10 @@ export const serperSource = {
       () => axios.post(
         baseUrl,
         {
-          q: search.query,
+          q: `${search.query} jobs`,
           location: search.source_options?.serper?.location ?? `${search.location}, UK`,
           gl: search.source_options?.serper?.gl ?? 'uk',
+          hl: 'en',
         },
         {
           timeout: appConfig.requestTimeoutMs,
@@ -49,17 +52,27 @@ export const serperSource = {
       }
     );
 
-    const jobs = (response.data?.jobs ?? []).map((item) => {
+    const jobs = [];
+
+    for (const item of (response.data?.jobs ?? [])) {
+      const title = item.title ?? '';
+      const description = [item.description, ...(item.extensions ?? [])].filter(Boolean).join(' | ');
+
+      if (!isRelevantJob(title, description)) {
+        logger.debug('Serper job filtered by relevance', { title, searchId: search.id });
+        continue;
+      }
+
       const salaryInfo = buildSalaryInfo({
-        title: item.title,
+        title,
         description: [item.description, item.via].filter(Boolean).join(' '),
         extensions: item.extensions ?? [],
       });
 
-      return {
-        externalId: item.link ?? `${item.title}-${item.companyName}`,
+      jobs.push({
+        externalId: item.link ?? `${title}-${item.companyName}`,
         source: 'serper',
-        title: item.title,
+        title,
         company: item.companyName ?? item.via ?? 'Unknown company',
         location: item.location ?? search.location,
         salaryMin: salaryInfo.salaryMin,
@@ -69,9 +82,9 @@ export const serperSource = {
         url: item.link,
         postedAt: null,
         searchId: search.id,
-        description: [item.description, ...(item.extensions ?? [])].filter(Boolean).join(' | '),
-      };
-    });
+        description,
+      });
+    }
 
     cache.set(key, {
       timestamp: Date.now(),

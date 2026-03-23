@@ -2,6 +2,8 @@ import axios from 'axios';
 import { appConfig, env } from '../config.js';
 import { withRetry } from '../utils/http.js';
 import { buildSalaryInfo } from '../utils/salary.js';
+import { isRelevantJob } from '../utils/relevance.js';
+import { logger } from '../utils/logger.js';
 
 const baseUrl = 'https://www.reed.co.uk/api/1.0/search';
 
@@ -23,6 +25,7 @@ export const reedSource = {
           locationName: search.location,
           distanceFromLocation: search.distance_from_location,
           minimumSalary: search.min_salary ?? undefined,
+          sectorId: search.source_options?.reed?.sectorId ?? undefined,
           resultsToTake: 25,
         },
       }),
@@ -32,18 +35,28 @@ export const reedSource = {
       }
     );
 
-    return (response.data?.results ?? []).map((item) => {
+    const jobs = [];
+
+    for (const item of (response.data?.results ?? [])) {
+      const title = item.jobTitle ?? '';
+      const description = item.jobDescription ?? '';
+
+      if (!isRelevantJob(title, description)) {
+        logger.debug('Reed job filtered by relevance', { title, searchId: search.id });
+        continue;
+      }
+
       const salaryInfo = buildSalaryInfo({
-        title: item.jobTitle,
-        description: item.jobDescription,
+        title,
+        description,
         salaryMin: item.minimumSalary,
         salaryMax: item.maximumSalary,
       });
 
-      return {
+      jobs.push({
         externalId: item.jobId ? String(item.jobId) : null,
         source: 'reed',
-        title: item.jobTitle,
+        title,
         company: item.employerName ?? 'Via Reed',
         location: item.locationName ?? search.location,
         salaryMin: salaryInfo.salaryMin,
@@ -53,8 +66,10 @@ export const reedSource = {
         url: item.jobUrl,
         postedAt: item.date ?? null,
         searchId: search.id,
-        description: item.jobDescription ?? '',
-      };
-    });
+        description,
+      });
+    }
+
+    return jobs;
   },
 };

@@ -8,6 +8,7 @@ const levels = {
   error: 0,
   warn: 1,
   info: 2,
+  debug: 3,
 };
 
 function formatTimestamp(date = new Date()) {
@@ -26,13 +27,16 @@ function write(level, message, meta) {
 
   const suffix = meta ? ` ${JSON.stringify(meta)}` : '';
   const line = `[${formatTimestamp()}] ${level.toUpperCase()} ${message}${suffix}`;
-  const consoleMethod = level === 'info' ? 'log' : level;
+  const consoleMethod = level === 'info' || level === 'debug' ? 'log' : level;
 
   console[consoleMethod](line);
   fs.appendFileSync(appConfig.logFilePath, `${line}\n`, 'utf8');
 }
 
 export const logger = {
+  debug(message, meta) {
+    write('debug', message, meta);
+  },
   info(message, meta) {
     write('info', message, meta);
   },
