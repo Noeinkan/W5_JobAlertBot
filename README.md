@@ -97,6 +97,8 @@ cp .env.example .env
 - `ADZUNA_APP_KEY`
 - `REED_API_KEY`
 - `SERPER_API_KEY`
+- `JOOBLE_API_KEY` — optional; email api@jooble.org to request a free key. Aggregates Totaljobs, CV-Library, CWJobs, and 100+ UK boards
+- `GUARDIAN_API_KEY` — optional; free key from open-platform.theguardian.com. Good for public sector digital/BIM roles
 
 ### Runtime Tuning
 

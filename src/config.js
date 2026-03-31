@@ -148,6 +148,8 @@ export const env = {
   adzunaAppKey: process.env.ADZUNA_APP_KEY ?? '',
   reedApiKey: process.env.REED_API_KEY ?? '',
   serperApiKey: process.env.SERPER_API_KEY ?? '',
+  joobleApiKey: process.env.JOOBLE_API_KEY ?? '',
+  guardianApiKey: process.env.GUARDIAN_API_KEY ?? '',
   serperCacheMinutes: Number.parseInt(process.env.SERPER_CACHE_MINUTES ?? '360', 10),
   apiDelayMs: Number.parseInt(process.env.API_DELAY_MS ?? '1000', 10),
   httpMaxRetries: Number.parseInt(process.env.HTTP_MAX_RETRIES ?? '3', 10),
@@ -193,7 +195,13 @@ export function getConfiguredSources() {
   return {
     adzuna: Boolean(env.adzunaAppId && env.adzunaAppKey),
     reed: Boolean(env.reedApiKey),
+    serper: Boolean(env.serperApiKey),
     linkedin: true,
+    jooble: Boolean(env.joobleApiKey),
+    careerjet: true,
+    guardian: Boolean(env.guardianApiKey),
+    jobserve: true,
+    construction_enquirer: true,
   };
 }
 
@@ -230,6 +238,12 @@ export function getSourceLabel(source) {
   return {
     adzuna: 'Adzuna',
     reed: 'Reed',
+    serper: 'Serper',
     linkedin: 'LinkedIn',
+    jooble: 'Jooble',
+    careerjet: 'Careerjet',
+    guardian: 'Guardian Jobs',
+    jobserve: 'JobServe',
+    construction_enquirer: 'Construction Enquirer',
   }[source] ?? source;
 }

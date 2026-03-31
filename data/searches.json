@@ -2,7 +2,7 @@
   "defaults": {
     "location": "London",
     "distance_from_location": 15,
-    "allowed_sources": ["adzuna", "reed", "linkedin"],
+    "allowed_sources": ["adzuna", "reed", "serper", "linkedin", "jooble", "careerjet", "guardian", "jobserve", "construction_enquirer"],
     "exclude_keywords": [],
     "tags": []
   },
@@ -129,16 +129,37 @@
     {
       "id": "remote_bim_lead",
       "keywords": "BIM Lead OR \"BIM Manager\" remote OR hybrid",
-      "location": null,
+      "location": "United Kingdom",
       "min_salary": 80000,
       "category": "engineering-jobs"
     },
     {
       "id": "remote_head_digital",
       "keywords": "\"Head of Digital\" construction OR infrastructure",
-      "location": null,
+      "location": "United Kingdom",
       "min_salary": null,
       "category": null
+    },
+    {
+      "id": "digital_engineering_manager",
+      "keywords": "\"Digital Engineering Manager\" construction OR infrastructure",
+      "location": "London",
+      "min_salary": null,
+      "category": "engineering-jobs"
+    },
+    {
+      "id": "computational_design_lead",
+      "keywords": "\"Computational Design Lead\" OR \"Parametric Design Lead\" AEC",
+      "location": "London",
+      "min_salary": null,
+      "category": null
+    },
+    {
+      "id": "vdc_director",
+      "keywords": "\"VDC Director\" OR \"VDC Manager\"",
+      "location": "London",
+      "min_salary": null,
+      "category": "engineering-jobs"
     }
   ]
 }

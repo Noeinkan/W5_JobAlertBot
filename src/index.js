@@ -25,15 +25,31 @@ import {
   sendStartupMessageWebhook,
 } from './discord.js';
 import { adzunaSource } from './sources/adzuna.js';
+import { careerjetSource } from './sources/careerjet.js';
+import { constructionEnquirerSource } from './sources/construction_enquirer.js';
+import { guardianSource } from './sources/guardian.js';
+import { joobleSource } from './sources/jooble.js';
+import { jobserveSource } from './sources/jobserve.js';
 import { linkedinSource } from './sources/linkedin.js';
 import { reedSource } from './sources/reed.js';
+import { serperSource } from './sources/serper.js';
 import { logger } from './utils/logger.js';
 import { jobMatchesSearch, sourceAllowed } from './utils/search.js';
 import { passesMinimumSalary } from './utils/salary.js';
 import { isSeniorEnough } from './utils/seniority.js';
 
 const client = hasDiscordBotConfig() ? createDiscordClient() : null;
-const sourceClients = [adzunaSource, reedSource, linkedinSource];
+const sourceClients = [
+  adzunaSource,
+  reedSource,
+  serperSource,
+  linkedinSource,
+  joobleSource,
+  careerjetSource,
+  guardianSource,
+  jobserveSource,
+  constructionEnquirerSource,
+];
 
 let isRunInProgress = false;
 let startupMessageSent = false;
@@ -149,8 +165,13 @@ async function runSearchCycle(trigger = 'scheduled') {
 
         await delay(Math.max(0, env.apiDelayMs));
 
+        logger.info(`Fetching [${sourceClient.name}] "${search.keywords}"`);
+
         try {
           const rawJobs = await sourceClient.fetchJobs(search);
+
+          logger.info(`  → ${rawJobs.length} raw results from ${sourceClient.name}`);
+
           const relevantJobs = rawJobs
             .filter((job) => jobMatchesSearch(job, search))
             .filter((job) => passesMinimumSalary(job, search.min_salary));
@@ -188,6 +209,8 @@ async function runSearchCycle(trigger = 'scheduled') {
               cycleStats.alreadySeen += 1;
             }
           }
+
+          logger.info(`  → ${seniorJobs.length} passed filters, ${newJobsForRunLog} new`);
 
           logRun({
             source: sourceClient.name,
