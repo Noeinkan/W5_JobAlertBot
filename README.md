@@ -4,7 +4,9 @@ Node.js bot that searches UK job sources, deduplicates results in SQLite, and se
 
 ## What It Does
 
-- Queries Adzuna, Reed, and Serper when the related credentials are present
+- Queries Adzuna, Reed, Serper, LinkedIn, Jooble, Careerjet, Guardian Jobs, JobServe, Construction Enquirer, and CV-Library for job listings
+- LinkedIn, Careerjet, JobServe, Construction Enquirer, and CV-Library require no API key
+- Filters jobs for seniority level and keyword relevance before inserting
 - Deduplicates jobs in SQLite before notifying Discord
 - Supports scheduled runs in bot mode and manual one-shot runs in webhook mode
 - Reloads `data/searches.json` at the start of every run
@@ -93,12 +95,12 @@ cp .env.example .env
 
 ### Sources
 
-- `ADZUNA_APP_ID`
-- `ADZUNA_APP_KEY`
-- `REED_API_KEY`
-- `SERPER_API_KEY`
-- `JOOBLE_API_KEY` — optional; email api@jooble.org to request a free key. Aggregates Totaljobs, CV-Library, CWJobs, and 100+ UK boards
+- `ADZUNA_APP_ID` + `ADZUNA_APP_KEY` — required for Adzuna
+- `REED_API_KEY` — required for Reed
+- `SERPER_API_KEY` — required for Serper
+- `JOOBLE_API_KEY` — optional; email api@jooble.org for a free key. Aggregates Totaljobs, CV-Library, CWJobs, and 100+ UK boards
 - `GUARDIAN_API_KEY` — optional; free key from open-platform.theguardian.com. Good for public sector digital/BIM roles
+- LinkedIn, Careerjet, JobServe, Construction Enquirer, and CV-Library require no API key and are always enabled
 
 ### Runtime Tuning
 
@@ -115,6 +117,8 @@ cp .env.example .env
 - Adzuna: https://developer.adzuna.com/
 - Reed: https://www.reed.co.uk/developers/jobseeker
 - Serper: https://serper.dev/
+- Jooble: email api@jooble.org to request a free key
+- Guardian: https://open-platform.theguardian.com/access/
 - Discord Developer Portal: https://discord.com/developers/applications
 
 ## Local Usage
@@ -184,7 +188,7 @@ Supported fields:
 - `min_salary`: minimum salary filter
 - `contract_only`: keep only roles detected as contract roles
 - `tags`: hashtags added to embeds
-- `allowed_sources`: subset of `adzuna`, `reed`, `serper`
+- `allowed_sources`: subset of `adzuna`, `reed`, `serper`, `linkedin`, `jooble`, `careerjet`, `guardian`, `jobserve`, `construction_enquirer`, `cvlibrary`
 - `exclude_keywords`: post-fetch content filter
 - `distance_from_location`: used by Reed
 - `source_options`: source-specific overrides
@@ -196,7 +200,7 @@ Example:
 	"defaults": {
 		"location": "London",
 		"distance_from_location": 10,
-		"allowed_sources": ["adzuna", "reed", "serper"],
+		"allowed_sources": ["adzuna", "reed", "serper", "linkedin", "jooble", "careerjet", "guardian", "jobserve", "construction_enquirer", "cvlibrary"],
 		"exclude_keywords": [],
 		"tags": []
 	},
@@ -207,7 +211,7 @@ Example:
 			"enabled": true,
 			"keywords": ["BIM Manager contract", "Information Manager contract infrastructure"],
 			"contract_only": true,
-			"allowed_sources": ["adzuna", "reed", "serper"],
+			"allowed_sources": ["adzuna", "reed", "serper", "linkedin", "jooble", "careerjet", "guardian", "jobserve", "construction_enquirer", "cvlibrary"],
 			"exclude_keywords": ["graduate", "junior", "trainee"],
 			"source_options": {
 				"adzuna": {
@@ -234,6 +238,9 @@ Notes:
 - Adzuna uses `what` or `what_or` based on the number of keywords and supports `what_exclude`
 - Reed uses `distance_from_location` and `minimumSalary`
 - Serper responses are cached in memory for `SERPER_CACHE_MINUTES`
+- LinkedIn, Careerjet, JobServe, Construction Enquirer, and CV-Library scrape public listings — no API key required
+- Jooble aggregates 100+ UK boards including Totaljobs, CWJobs, and CV-Library
+- Guardian Jobs is suited to public sector and digital roles
 - if a source fails, the run continues and the failure is logged in `run_log`
 
 ## Notification Semantics
@@ -282,14 +289,23 @@ src/
 	discord.js         Discord client, embeds, webhook helpers, slash commands
 	index.js           Runtime orchestration and scheduler
 	sources/
-		adzuna.js        Adzuna fetcher
-		reed.js          Reed fetcher
-		serper.js        Serper fetcher with in-memory cache
+		adzuna.js                  Adzuna fetcher
+		careerjet.js               Careerjet fetcher (no API key)
+		construction_enquirer.js   Construction Enquirer fetcher (no API key)
+		cvlibrary.js               CV-Library fetcher (no API key)
+		guardian.js                Guardian Jobs fetcher
+		jobserve.js                JobServe fetcher (no API key)
+		jooble.js                  Jooble fetcher
+		linkedin.js                LinkedIn fetcher (no API key)
+		reed.js                    Reed fetcher
+		serper.js                  Serper fetcher with in-memory cache
 	utils/
 		http.js          Retry helper
 		logger.js        File and console logging
+		relevance.js     Keyword relevance scoring
 		salary.js        Salary parsing and contract detection
 		search.js        Search and source filtering helpers
+		seniority.js     Seniority level detection
 data/
 	searches.json      Search definitions
 	jobs.db            SQLite database created at runtime

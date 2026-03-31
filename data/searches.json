@@ -160,6 +160,34 @@
       "location": "London",
       "min_salary": null,
       "category": "engineering-jobs"
+    },
+    {
+      "id": "contract_cde_configuration",
+      "keywords": "\"Configuration Lead\" CDE OR \"CDE Configuration\" OR \"Digital Engineering Configuration\" contract OR \"CDE Admin\" contract",
+      "location": "United Kingdom",
+      "min_salary": null,
+      "category": null
+    },
+    {
+      "id": "contract_uk_bim_lead",
+      "keywords": "\"BIM Lead\" contract OR \"BIM Manager\" contract remote OR \"BIM Lead\" contract hybrid",
+      "location": "United Kingdom",
+      "min_salary": null,
+      "category": "engineering-jobs"
+    },
+    {
+      "id": "contract_uk_information_manager",
+      "keywords": "\"Information Manager\" contract OR \"BIM Information Manager\" contract",
+      "location": "United Kingdom",
+      "min_salary": null,
+      "category": null
+    },
+    {
+      "id": "contract_digital_engineering",
+      "keywords": "\"Digital Engineering\" Lead contract OR \"Digital Engineering\" Manager contract",
+      "location": "United Kingdom",
+      "min_salary": null,
+      "category": "engineering-jobs"
     }
   ]
 }

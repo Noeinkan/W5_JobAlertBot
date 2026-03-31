@@ -1,0 +1,48 @@
+name: "Andrea Aita"
+current_title: "Associate Director - BIM & Digital Delivery Lead"
+years_experience: 10
+location:
+  current: "London, UK"
+  open_to_remote: true
+  open_to_relocate:
+    - Italy
+
+skills:
+  core:
+    - BIM management & strategy
+    - ISO 19650 implementation
+    - Digital delivery & CDE governance
+    - Stakeholder management
+    - Information management frameworks
+  technical:
+    - Autodesk Construction Cloud (ACC)
+    - Python
+    - React / Node.js
+    - Docker / Linux / VPS
+    - AI/ML applied to AEC workflows
+  certifications:
+    - RICS BIM Manager
+    - Lean Six Sigma Green Belt
+
+education:
+  - degree: "MSc Building Engineering & Architecture"
+    institution: "University of Padua"
+
+preferences:
+  min_salary_gbp: 90000
+  target_industries:
+    - Infrastructure
+    - Energy / Fusion / Nuclear
+    - Digital transformation
+    - AI/ML products
+    - AEC technology
+  role_types:
+    - Head of Information Management
+    - Digital Delivery Lead
+    - Solution Architect
+    - Principal Product Manager
+    - Director-level BIM/Digital
+  dealbreakers:
+    - "Pure CAD drafting roles"
+    - "Junior or mid-level seniority"
+    - "No remote flexibility"

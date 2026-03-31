@@ -136,6 +136,8 @@ function normalizeSearch(search, defaults) {
     exclude_keywords: Array.from(new Set(excludeKeywords)),
     source_options: search.source_options && typeof search.source_options === 'object' ? search.source_options : {},
     category: search.category ?? null,
+    enrich_jobs: Boolean(search.enrich_jobs),
+    require_keywords_in_page: arrayOrFallback(search.require_keywords_in_page),
   };
 }
 
@@ -152,6 +154,7 @@ export const env = {
   guardianApiKey: process.env.GUARDIAN_API_KEY ?? '',
   serperCacheMinutes: Number.parseInt(process.env.SERPER_CACHE_MINUTES ?? '360', 10),
   apiDelayMs: Number.parseInt(process.env.API_DELAY_MS ?? '1000', 10),
+  enrichDelayMs: Number.parseInt(process.env.ENRICH_DELAY_MS ?? '500', 10),
   httpMaxRetries: Number.parseInt(process.env.HTTP_MAX_RETRIES ?? '3', 10),
   httpRetryDelayMs: Number.parseInt(process.env.HTTP_RETRY_DELAY_MS ?? '1500', 10),
   logLevel: process.env.LOG_LEVEL ?? 'info',
@@ -202,6 +205,7 @@ export function getConfiguredSources() {
     guardian: Boolean(env.guardianApiKey),
     jobserve: true,
     construction_enquirer: true,
+    cvlibrary: true,
   };
 }
 
@@ -245,5 +249,6 @@ export function getSourceLabel(source) {
     guardian: 'Guardian Jobs',
     jobserve: 'JobServe',
     construction_enquirer: 'Construction Enquirer',
+    cvlibrary: 'CV-Library',
   }[source] ?? source;
 }

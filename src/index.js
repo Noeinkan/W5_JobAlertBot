@@ -27,6 +27,7 @@ import {
 import { adzunaSource } from './sources/adzuna.js';
 import { careerjetSource } from './sources/careerjet.js';
 import { constructionEnquirerSource } from './sources/construction_enquirer.js';
+import { cvlibrarySource } from './sources/cvlibrary.js';
 import { guardianSource } from './sources/guardian.js';
 import { joobleSource } from './sources/jooble.js';
 import { jobserveSource } from './sources/jobserve.js';
@@ -37,6 +38,7 @@ import { logger } from './utils/logger.js';
 import { jobMatchesSearch, sourceAllowed } from './utils/search.js';
 import { passesMinimumSalary } from './utils/salary.js';
 import { isSeniorEnough } from './utils/seniority.js';
+import { enrichJobDescription } from './utils/enrich.js';
 
 const client = hasDiscordBotConfig() ? createDiscordClient() : null;
 const sourceClients = [
@@ -49,6 +51,7 @@ const sourceClients = [
   guardianSource,
   jobserveSource,
   constructionEnquirerSource,
+  cvlibrarySource,
 ];
 
 let isRunInProgress = false;
@@ -182,7 +185,31 @@ async function runSearchCycle(trigger = 'scheduled') {
           const seniorJobs = [];
 
           for (const job of relevantJobs) {
-            const check = isSeniorEnough(job);
+            // Fetch the full job page for richer filtering when configured
+            let enriched = job;
+
+            if (search.enrich_jobs) {
+              await delay(Math.max(0, env.enrichDelayMs));
+              enriched = await enrichJobDescription(job);
+            }
+
+            // Require at least one keyword to appear in the full page text
+            if (search.require_keywords_in_page.length > 0) {
+              const text = (enriched.description ?? '').toLowerCase();
+              const hasMatch = search.require_keywords_in_page.some(
+                (kw) => text.includes(String(kw).toLowerCase())
+              );
+
+              if (!hasMatch) {
+                cycleStats.filteredNotRelevant += 1;
+                continue;
+              }
+            }
+
+            // Use enriched description for seniority detection, but push the
+            // original job so Discord/DB get the concise API snippet, not a
+            // wall of stripped HTML.
+            const check = isSeniorEnough(enriched);
 
             if (!check.passes) {
               cycleStats.filteredTooJunior += 1;

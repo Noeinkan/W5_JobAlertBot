@@ -1,10 +1,10 @@
 # CLAUDE.md
 
-Node.js Discord bot for UK job alerts. Fetches from Adzuna, Reed, Serper → normalizes → deduplicates in SQLite → notifies Discord.
+Node.js Discord bot for UK job alerts. Fetches from Adzuna, Reed, Serper, LinkedIn, Jooble, Careerjet, Guardian Jobs, JobServe, Construction Enquirer, and CV-Library → normalizes → deduplicates in SQLite → notifies Discord.
 
 ## Stack
 
-Node.js 20+, ESM, discord.js v14, better-sqlite3, axios, node-cron, dotenv
+Node.js 20+, ESM, discord.js v14, better-sqlite3, axios, node-cron, dotenv, fast-xml-parser
 
 ## Key Files
 
@@ -14,8 +14,13 @@ Node.js 20+, ESM, discord.js v14, better-sqlite3, axios, node-cron, dotenv
 | `src/config.js` | env loading, search normalization, source enablement |
 | `src/db.js` | schema, insert/stats helpers, pending job retrieval |
 | `src/discord.js` | client, embeds, webhook, command registration |
-| `src/sources/*.js` | source adapters |
-| `src/utils/*.js` | retry, logging, salary parsing, filters |
+| `src/sources/*.js` | source adapters (10 sources) |
+| `src/utils/http.js` | retry helper |
+| `src/utils/logger.js` | file and console logging |
+| `src/utils/salary.js` | salary parsing and contract detection |
+| `src/utils/search.js` | search and source filtering |
+| `src/utils/seniority.js` | seniority level detection |
+| `src/utils/relevance.js` | keyword relevance scoring |
 | `data/searches.json` | search definitions, reloaded on every run |
 
 ## Runtime Modes
@@ -45,6 +50,9 @@ All source adapters must return: `externalId`, `source`, `title`, `company`, `lo
 - Source failures must not abort the full cycle
 - Pending jobs come from the DB, not only the current run
 - Serper results are cached in memory (query + location)
+- LinkedIn, Careerjet, JobServe, Construction Enquirer, and CV-Library require no API key
+- Adzuna, Reed, Serper, Jooble, and Guardian Jobs require credentials
+- Jobs are filtered for seniority via `src/utils/seniority.js` after source fetch
 - Guild-scoped slash commands only when `DISCORD_GUILD_ID` is set
 - Searches normalized in `src/config.js` — keep in sync with `data/searches.json` schema
 

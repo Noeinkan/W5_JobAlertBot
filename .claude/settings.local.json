@@ -2,7 +2,11 @@
   "permissions": {
     "allow": [
       "Bash(npm install:*)",
-      "Bash(npm run:*)"
+      "Bash(npm run:*)",
+      "WebFetch(domain:www.cv-library.co.uk)",
+      "WebSearch",
+      "Bash(node --input-type=module -e \":*)",
+      "Bash(node --check src/:*)"
     ]
   }
 }
