@@ -37,8 +37,7 @@ import { serperSource } from './sources/serper.js';
 import { logger } from './utils/logger.js';
 import { jobMatchesSearch, sourceAllowed } from './utils/search.js';
 import { passesMinimumSalary } from './utils/salary.js';
-import { isSeniorEnough } from './utils/seniority.js';
-import { enrichJobDescription } from './utils/enrich.js';
+import { scoreJob } from './utils/rag.js';
 
 const client = hasDiscordBotConfig() ? createDiscordClient() : null;
 const sourceClients = [
@@ -142,7 +141,7 @@ async function runSearchCycle(trigger = 'scheduled') {
   const cycleStats = {
     rawFetched: 0,
     filteredNotRelevant: 0,
-    filteredTooJunior: 0,
+    filteredRed: 0,
     alreadySeen: 0,
   };
 
@@ -185,41 +184,19 @@ async function runSearchCycle(trigger = 'scheduled') {
           const seniorJobs = [];
 
           for (const job of relevantJobs) {
-            // Fetch the full job page for richer filtering when configured
-            let enriched = job;
+            const { rating, score, reason } = scoreJob(job);
 
-            if (search.enrich_jobs) {
-              await delay(Math.max(0, env.enrichDelayMs));
-              enriched = await enrichJobDescription(job);
-            }
-
-            // Require at least one keyword to appear in the full page text
-            if (search.require_keywords_in_page.length > 0) {
-              const text = (enriched.description ?? '').toLowerCase();
-              const hasMatch = search.require_keywords_in_page.some(
-                (kw) => text.includes(String(kw).toLowerCase())
-              );
-
-              if (!hasMatch) {
-                cycleStats.filteredNotRelevant += 1;
-                continue;
-              }
-            }
-
-            // Use enriched description for seniority detection, but push the
-            // original job so Discord/DB get the concise API snippet, not a
-            // wall of stripped HTML.
-            const check = isSeniorEnough(enriched);
-
-            if (!check.passes) {
-              cycleStats.filteredTooJunior += 1;
+            if (rating === 'Red') {
+              cycleStats.filteredRed += 1;
               continue;
             }
 
             seniorJobs.push({
               ...job,
               tags: job.tags ?? search.tags,
-              seniorityReason: check.reason,
+              ragRating: rating,
+              ragScore: score,
+              ragReason: reason,
             });
           }
 
@@ -292,7 +269,7 @@ async function runSearchCycle(trigger = 'scheduled') {
       trigger,
       totalResultsFetched: cycleStats.rawFetched,
       filteredNotRelevant: cycleStats.filteredNotRelevant,
-      filteredTooJunior: cycleStats.filteredTooJunior,
+      filteredRed: cycleStats.filteredRed,
       newJobsMatchingCriteria: newJobs.length,
       alreadySeen: cycleStats.alreadySeen,
       sentToDiscord: pendingJobs.length,

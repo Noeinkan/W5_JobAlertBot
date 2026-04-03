@@ -9,7 +9,6 @@ import {
   SlashCommandBuilder,
 } from 'discord.js';
 import { env, getSourceLabel } from './config.js';
-import { isSeniorEnough } from './utils/seniority.js';
 
 function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -122,20 +121,27 @@ function getPostedText(postedAt) {
   return `<t:${Math.floor(date.getTime() / 1000)}:R>`;
 }
 
+const RAG_COLOR = { Green: 0x2ecc71, Amber: 0xf39c12 };
+const RAG_ICON = { Green: '🟢', Amber: '🟡' };
+
 export function buildJobEmbed(job) {
-  const color = job.isContract ? 0x3498db : 0x2ecc71;
-  const banner = job.isContract ? 'CONTRACT ROLE' : 'NEW JOB ALERT';
+  const rating = job.ragRating ?? 'Amber';
+  const color = RAG_COLOR[rating] ?? 0xf39c12;
+  const icon = RAG_ICON[rating] ?? '🟡';
+  const contractLabel = job.isContract ? ' · CONTRACT' : '';
+  const banner = `${rating.toUpperCase()} MATCH${contractLabel}`;
   const tags = job.tags?.length > 0
     ? job.tags.map((tag) => `#${tag}`).join(' ')
     : `#${job.searchId} ${job.isContract ? '#contract' : '#permanent'}`;
 
   const applyLine = job.url ? `[Apply Here](${job.url})` : 'Apply link unavailable';
-  const matchReason = job.seniorityReason ?? isSeniorEnough(job).reason;
-  const matchLine = matchReason ? `\u2705 Match: ${matchReason}` : null;
+  const scoreLabel = job.ragScore != null
+    ? `${icon} ${rating} (score: ${job.ragScore})${job.ragReason ? ` — ${job.ragReason}` : ''}`
+    : null;
 
   const embed = new EmbedBuilder()
     .setColor(color)
-    .setTitle(`${job.isContract ? '🔵' : '🟢'} ${banner}`)
+    .setTitle(`${icon} ${banner}`)
     .setDescription([
       `**${job.title}**`,
       `🏢 ${job.company || 'Unknown company'}`,
@@ -143,7 +149,7 @@ export function buildJobEmbed(job) {
       `💰 ${job.salaryText || 'Salary not listed'}`,
       `📅 Posted: ${getPostedText(job.postedAt)}`,
       `🔗 Source: ${getSourceLabel(job.source)}`,
-      matchLine,
+      scoreLabel,
       applyLine,
       `Tags: ${tags}`,
     ].filter(Boolean).join('\n'));
