@@ -2,38 +2,123 @@
   "defaults": {
     "location": "London",
     "distance_from_location": 30,
-    "allowed_sources": ["adzuna", "reed", "serper", "linkedin", "jooble", "careerjet", "guardian", "jobserve", "construction_enquirer", "cvlibrary"]
+    "allowed_sources": ["adzuna", "reed", "serper", "linkedin", "jooble", "careerjet", "guardian", "jobserve", "construction_enquirer", "cvlibrary"],
+    "exclude_keywords": ["graduate", "junior", "trainee", "apprentice", "entry level"]
   },
   "searches": [
     {
       "id": "bim",
+      "name": "BIM leadership",
       "keywords": "BIM",
-      "location": "London"
+      "location": "London",
+      "min_salary": 80000
     },
     {
       "id": "digital_construction",
+      "name": "Digital Construction",
       "keywords": "Digital Construction",
-      "location": "London"
+      "location": "London",
+      "min_salary": 80000
     },
     {
       "id": "information_management",
+      "name": "Information Management",
       "keywords": "Information Management",
-      "location": "London"
+      "location": "London",
+      "min_salary": 80000
     },
     {
       "id": "digital_delivery",
+      "name": "Digital Delivery",
       "keywords": "Digital Delivery",
-      "location": "London"
+      "location": "London",
+      "min_salary": 85000
     },
     {
       "id": "digital_engineering",
+      "name": "Digital Engineering",
       "keywords": "Digital Engineering",
-      "location": "London"
+      "location": "London",
+      "min_salary": 80000
     },
     {
       "id": "digital_twin",
+      "name": "Digital Twin",
       "keywords": "Digital Twin",
-      "location": "London"
+      "location": "London",
+      "min_salary": 75000
+    },
+    {
+      "id": "asset_information",
+      "name": "Asset Information Management",
+      "keywords": "Asset Information Management",
+      "location": "London",
+      "min_salary": 80000
+    },
+    {
+      "id": "iso_19650",
+      "name": "ISO 19650",
+      "keywords": "ISO 19650",
+      "location": "London",
+      "min_salary": 75000
+    },
+    {
+      "id": "head_of_bim",
+      "name": "Head of BIM",
+      "keywords": "Head of BIM",
+      "location": "London",
+      "min_salary": 90000
+    },
+    {
+      "id": "nuclear_digital",
+      "name": "Nuclear Digital (UK-wide)",
+      "keywords": "Nuclear Digital",
+      "location": "United Kingdom",
+      "distance_from_location": 150,
+      "min_salary": 90000
+    },
+    {
+      "id": "programme_digital_lead",
+      "name": "Programme Digital Lead",
+      "keywords": "Programme Digital Lead",
+      "location": "London",
+      "min_salary": 90000
+    },
+    {
+      "id": "digital_innovation",
+      "name": "Digital Innovation",
+      "keywords": "Digital Innovation",
+      "location": "London",
+      "min_salary": 85000
+    },
+    {
+      "id": "contract_bim",
+      "name": "Contract BIM / IM",
+      "keywords": "BIM Manager OR Information Manager OR BIM Lead",
+      "location": "London",
+      "contract_only": true
+    },
+    {
+      "id": "contract_iso_cde",
+      "name": "Contract ISO 19650 / CDE",
+      "keywords": "ISO 19650 OR CDE OR Common Data Environment",
+      "location": "London",
+      "contract_only": true
+    },
+    {
+      "id": "contract_digital_lead",
+      "name": "Contract Digital Lead / Interim",
+      "keywords": "Interim Digital Lead OR Digital Delivery Lead OR Programme Digital",
+      "location": "London",
+      "contract_only": true
+    },
+    {
+      "id": "contract_nuclear",
+      "name": "Contract Nuclear Digital (UK-wide)",
+      "keywords": "Nuclear BIM OR Nuclear Information Manager OR Nuclear Digital",
+      "location": "United Kingdom",
+      "distance_from_location": 150,
+      "contract_only": true
     }
   ]
 }

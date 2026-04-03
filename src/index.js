@@ -38,6 +38,7 @@ import { logger } from './utils/logger.js';
 import { jobMatchesSearch, sourceAllowed } from './utils/search.js';
 import { passesMinimumSalary } from './utils/salary.js';
 import { scoreJob } from './utils/rag.js';
+import { isSeniorEnough } from './utils/seniority.js';
 
 const client = hasDiscordBotConfig() ? createDiscordClient() : null;
 const sourceClients = [
@@ -184,6 +185,12 @@ async function runSearchCycle(trigger = 'scheduled') {
           const seniorJobs = [];
 
           for (const job of relevantJobs) {
+            const seniority = isSeniorEnough(job);
+            if (!seniority.passes) {
+              cycleStats.filteredRed += 1;
+              continue;
+            }
+
             const { rating, score, reason } = scoreJob(job);
 
             if (rating === 'Red') {
