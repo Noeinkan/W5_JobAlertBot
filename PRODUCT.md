@@ -2,7 +2,7 @@
 
 ## What It Is
 
-A self-hosted Discord bot that monitors 10 UK job boards and delivers relevant, deduplicated job alerts directly into a Discord channel. Built for professionals tracking niche or senior roles in specialist fields (e.g. BIM, Digital Construction, Information Management) where manual job board searching is repetitive and time-consuming.
+A self-hosted Discord bot that monitors 11 UK job boards and delivers relevant, deduplicated job alerts directly into a Discord channel. Built for professionals tracking niche or senior roles in specialist fields (e.g. BIM, Digital Construction, Information Management) where manual job board searching is repetitive and time-consuming.
 
 ## Problem It Solves
 
@@ -16,7 +16,7 @@ Individuals actively or passively searching for senior roles (e.g. BIM Manager, 
 
 ### Multi-Source Aggregation
 
-Fetches from 10 job sources in a single run:
+Fetches from 11 job sources in a single run:
 
 | Source | Key Required |
 |---|---|
@@ -40,10 +40,12 @@ Jobs are deduplicated in SQLite by `(title, company, source)`. A job seen again 
 Before a job is stored or notified:
 
 - **Seniority filtering** — removes graduate, junior, and trainee-level roles automatically
+- **RAG quality scoring** — scores each job Green / Amber / Red against a weighted keyword matrix covering title seniority, AEC domain relevance, experience signals, and negative indicators. Red-rated jobs are suppressed; Green and Amber are notified with their rating shown in the Discord embed
 - **Keyword relevance scoring** — ranks and filters results by how closely they match the search intent
 - **Contract detection** — identifies and flags contract vs. permanent roles from salary text and job title patterns
 - **Salary parsing** — extracts and normalises salary ranges from free-text descriptions
 - **Exclude keywords** — per-search content filter to suppress irrelevant results (e.g. "junior", "trainee")
+- **Page enrichment** — optionally fetches the full job detail page to give the RAG scorer richer description text (enabled per-search via `enrich_jobs: true`)
 
 ### Flexible Search Configuration
 
@@ -93,10 +95,16 @@ searches.json
 [Filter: seniority + relevance + exclude keywords]
       |
       v
+[Optional: enrich description from job detail page]
+      |
+      v
+[RAG score: Green / Amber / Red — drop Red]
+      |
+      v
 [Deduplicate in SQLite]
       |
       v
-[Send new jobs as Discord embeds]
+[Send new jobs as Discord embeds (colour-coded by RAG rating)]
       |
       v
 [Mark as notified in DB]
@@ -118,9 +126,39 @@ searches.json
 - **Config**: dotenv
 - **XML parsing**: fast-xml-parser (for RSS-based sources)
 
+## Discord Embed Appearance
+
+Each notified job is a colour-coded embed:
+
+| RAG Rating | Colour | Title |
+|---|---|---|
+| Green | Green | `🟢 GREEN MATCH` |
+| Amber | Orange | `🟡 AMBER MATCH` |
+
+Contract roles append `· CONTRACT` to the title. The embed body shows the RAG score and the matching signals (e.g. `Title: Head of · Domain: BIM, ISO 19650 · Experience: Line management`).
+
+## Companion Tool — job-match CLI
+
+`job-match/` is a standalone Python CLI that uses the Claude API to deeply analyse a single job against a candidate profile YAML. Use it to manually evaluate a shortlisted job after the bot surfaces it.
+
+```bash
+# Analyse a URL
+job-match match "https://reed.co.uk/jobs/..."
+
+# Paste text from clipboard (recommended for LinkedIn)
+job-match match --text
+
+# Batch mode
+job-match batch urls.txt --output results.json
+```
+
+Output includes an `overall_score` (0–100), per-dimension scores (skills fit, seniority, location, salary), missing skills, strong matches, and a verdict (`STRONG_MATCH`, `GOOD_MATCH`, etc.). Results are cached by URL hash.
+
 ## Constraints and Trade-offs
 
 - LinkedIn, Careerjet, JobServe, Construction Enquirer, and CV-Library are scraped from public listings — no formal API, may break if site structure changes
 - Serper is a paid Google Jobs proxy — cache TTL (`SERPER_CACHE_MINUTES`) should be kept high to control cost
+- Page enrichment (`enrich_jobs: true`) increases run time and HTTP load — use selectively for high-value searches
+- RAG scoring is heuristic-based — tune `GREEN_THRESHOLD` and `AMBER_THRESHOLD` in `src/utils/rag.js` if too many or too few jobs are suppressed
 - Search configuration must stay in sync with `src/config.js` normalization logic
 - No web UI — all interaction is through Discord or the command line

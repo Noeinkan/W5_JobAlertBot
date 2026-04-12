@@ -75,7 +75,7 @@ export const cvlibrarySource = {
 
       if (!title) continue;
 
-      if (!isRelevantJob(title, salaryText)) {
+      if (!isRelevantJob(title, '')) {
         logger.debug('CV-Library job filtered by relevance', { title, searchId: search.id });
         continue;
       }
@@ -104,7 +104,7 @@ export const cvlibrarySource = {
         url: buildJobUrl(id, title),
         postedAt,
         searchId: search.id,
-        description: salaryText,
+        description: '',
       });
     }
 

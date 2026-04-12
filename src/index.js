@@ -39,6 +39,8 @@ import { jobMatchesSearch, sourceAllowed } from './utils/search.js';
 import { passesMinimumSalary } from './utils/salary.js';
 import { scoreJob } from './utils/rag.js';
 import { isSeniorEnough } from './utils/seniority.js';
+import { enrichJobDescription } from './utils/enrich.js';
+import { createRunCsvLog } from './utils/run_log_csv.js';
 
 const client = hasDiscordBotConfig() ? createDiscordClient() : null;
 const sourceClients = [
@@ -142,9 +144,12 @@ async function runSearchCycle(trigger = 'scheduled') {
   const cycleStats = {
     rawFetched: 0,
     filteredNotRelevant: 0,
-    filteredRed: 0,
+    filteredSeniority: 0,
+    filteredRag: 0,
     alreadySeen: 0,
   };
+  const csvLog = createRunCsvLog(trigger);
+  const warnedUnconfigured = new Set();
 
   logger.info('Starting search cycle', {
     trigger,
@@ -159,10 +164,10 @@ async function runSearchCycle(trigger = 'scheduled') {
         }
 
         if (!sourceClient.isConfigured()) {
-          logger.warn('Skipping source because credentials are missing', {
-            source: sourceClient.name,
-            searchId: search.id,
-          });
+          if (!warnedUnconfigured.has(sourceClient.name)) {
+            logger.warn('Skipping source because credentials are missing', { source: sourceClient.name });
+            warnedUnconfigured.add(sourceClient.name);
+          }
           continue;
         }
 
@@ -175,26 +180,75 @@ async function runSearchCycle(trigger = 'scheduled') {
 
           logger.info(`  → ${rawJobs.length} raw results from ${sourceClient.name}`);
 
-          const relevantJobs = rawJobs
-            .filter((job) => jobMatchesSearch(job, search))
-            .filter((job) => passesMinimumSalary(job, search.min_salary));
-
           cycleStats.rawFetched += rawJobs.length;
-          cycleStats.filteredNotRelevant += rawJobs.length - relevantJobs.length;
+
+          const csvBase = {
+            trigger,
+            search_id: search.id,
+            search_name: search.name,
+            source: sourceClient.name,
+          };
+
+          // Filter and enrich — loop instead of .filter() so dropped jobs land in the CSV
+          const jobsToScore = [];
+          for (const job of rawJobs) {
+            const base = {
+              ...csvBase,
+              title: job.title,
+              company: job.company,
+              location: job.location,
+              salary_text: job.salaryText,
+              salary_min: job.salaryMin,
+              salary_max: job.salaryMax,
+              is_contract: job.isContract ? 'yes' : 'no',
+              url: job.url,
+              posted_at: job.postedAt,
+            };
+
+            if (!jobMatchesSearch(job, search)) {
+              cycleStats.filteredNotRelevant += 1;
+              csvLog.append({ ...base, desc_chars: job.description?.length ?? 0, enriched: 'no', outcome: 'filtered_match' });
+              continue;
+            }
+
+            if (!passesMinimumSalary(job, search.min_salary)) {
+              cycleStats.filteredNotRelevant += 1;
+              csvLog.append({ ...base, desc_chars: job.description?.length ?? 0, enriched: 'no', outcome: 'filtered_salary' });
+              continue;
+            }
+
+            let scored = job;
+            let enriched = false;
+            if (search.enrich_jobs) {
+              await delay(env.enrichDelayMs);
+              const enrichedJob = await enrichJobDescription(job);
+              enriched = (enrichedJob.description?.length ?? 0) > (job.description?.length ?? 0);
+              scored = enrichedJob;
+            }
+
+            jobsToScore.push({ job: scored, base, enriched });
+          }
 
           const seniorJobs = [];
 
-          for (const job of relevantJobs) {
+          for (const { job, base, enriched } of jobsToScore) {
+            const descChars = job.description?.length ?? 0;
+            const csvRow = { ...base, desc_chars: descChars, enriched: enriched ? 'yes' : 'no' };
+
             const seniority = isSeniorEnough(job);
             if (!seniority.passes) {
-              cycleStats.filteredRed += 1;
+              cycleStats.filteredSeniority += 1;
+              logger.debug('Job filtered by seniority', { title: job.title, source: sourceClient.name });
+              csvLog.append({ ...csvRow, outcome: 'filtered_seniority' });
               continue;
             }
 
             const { rating, score, reason } = scoreJob(job);
 
             if (rating === 'Red') {
-              cycleStats.filteredRed += 1;
+              cycleStats.filteredRag += 1;
+              logger.debug('Job filtered by RAG score', { title: job.title, source: sourceClient.name, score });
+              csvLog.append({ ...csvRow, outcome: 'filtered_rag', rag_rating: rating, rag_score: score, rag_reason: reason });
               continue;
             }
 
@@ -204,6 +258,7 @@ async function runSearchCycle(trigger = 'scheduled') {
               ragRating: rating,
               ragScore: score,
               ragReason: reason,
+              _csvRow: { ...csvRow, rag_rating: rating, rag_score: score, rag_reason: reason },
             });
           }
 
@@ -216,8 +271,10 @@ async function runSearchCycle(trigger = 'scheduled') {
             if (inserted) {
               newJobs.push(job);
               newJobsForRunLog += 1;
+              csvLog.append({ ...job._csvRow, outcome: 'new' });
             } else {
               cycleStats.alreadySeen += 1;
+              csvLog.append({ ...job._csvRow, outcome: 'already_seen' });
             }
           }
 
@@ -276,7 +333,8 @@ async function runSearchCycle(trigger = 'scheduled') {
       trigger,
       totalResultsFetched: cycleStats.rawFetched,
       filteredNotRelevant: cycleStats.filteredNotRelevant,
-      filteredRed: cycleStats.filteredRed,
+      filteredSeniority: cycleStats.filteredSeniority,
+      filteredRag: cycleStats.filteredRag,
       newJobsMatchingCriteria: newJobs.length,
       alreadySeen: cycleStats.alreadySeen,
       sentToDiscord: pendingJobs.length,

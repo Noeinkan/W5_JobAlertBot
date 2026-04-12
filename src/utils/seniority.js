@@ -99,8 +99,8 @@ export function isSeniorEnough(job) {
     return { passes: true, reason: `description seniority (${descMatch})` };
   }
 
-  // Step 5: Pass if salary is unknown and title contains "manager" (BIM Manager is senior in AEC)
-  if (title.includes('manager') && !Number.isFinite(job.salaryMin)) {
+  // Step 5: Pass if title contains "manager" (BIM Manager, Information Manager etc. are senior in AEC)
+  if (title.includes('manager')) {
     return { passes: true, reason: 'manager-level title' };
   }
 

@@ -3,7 +3,8 @@
     "location": "London",
     "distance_from_location": 30,
     "allowed_sources": ["adzuna", "reed", "serper", "linkedin", "jooble", "careerjet", "guardian", "jobserve", "construction_enquirer", "cvlibrary"],
-    "exclude_keywords": ["graduate", "junior", "trainee", "apprentice", "entry level"]
+    "exclude_keywords": ["graduate", "junior", "trainee", "apprentice", "entry level"],
+    "enrich_jobs": true
   },
   "searches": [
     {
@@ -119,6 +120,17 @@
       "location": "United Kingdom",
       "distance_from_location": 150,
       "contract_only": true
+    },
+    {
+      "id": "europe_digital_construction",
+      "name": "Europe – Digital Construction Leadership",
+      "keywords": "Head of Digital Construction OR BIM Director OR Digital Construction Director OR Head of BIM OR Head of Digital Services",
+      "location": "Netherlands",
+      "allowed_sources": ["jooble", "serper", "linkedin"],
+      "source_options": {
+        "serper": { "location": "Netherlands", "gl": "nl" },
+        "linkedin": { "location": "Netherlands" }
+      }
     }
   ]
 }

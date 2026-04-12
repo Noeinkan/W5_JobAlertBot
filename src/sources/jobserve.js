@@ -8,6 +8,9 @@ import { logger } from '../utils/logger.js';
 
 const parser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: '@_' });
 
+// JobServe moved their search URL from /JobSearch/ to /job-search/ around 2025.
+// The RSS feed (RSS=1) may require a UK IP to return XML rather than HTML.
+// Set JOBSERVE_ENABLED=false in .env to disable if the feed is unavailable.
 function buildFeedUrl(search) {
   const params = new URLSearchParams({
     Keywords: search.query,
@@ -15,7 +18,7 @@ function buildFeedUrl(search) {
     Radius: '30',
     RSS: '1',
   });
-  return `https://www.jobserve.com/gb/en/JobSearch/?${params.toString()}`;
+  return `https://www.jobserve.com/gb/en/job-search/?${params.toString()}`;
 }
 
 function stripHtml(html) {
@@ -25,7 +28,7 @@ function stripHtml(html) {
 export const jobserveSource = {
   name: 'jobserve',
   isConfigured() {
-    return true;
+    return String(process.env.JOBSERVE_ENABLED ?? 'true').toLowerCase() !== 'false';
   },
   async fetchJobs(search) {
     const url = buildFeedUrl(search);
@@ -33,11 +36,20 @@ export const jobserveSource = {
     const response = await withRetry(
       () => axios.get(url, {
         timeout: appConfig.requestTimeoutMs,
-        headers: { Accept: 'application/rss+xml, application/xml, text/xml' },
+        headers: {
+          Accept: 'application/rss+xml, application/xml, text/xml, */*',
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        },
         responseType: 'text',
       }),
       { source: 'jobserve', searchId: search.id }
     );
+
+    // If the response is HTML (not RSS XML), return empty rather than throwing.
+    if (!response.data?.trim().startsWith('<?xml') && !response.data?.trim().startsWith('<rss')) {
+      logger.warn('JobServe returned non-RSS response (HTML?). URL may need updating or a UK IP.', { searchId: search.id });
+      return [];
+    }
 
     const parsed = parser.parse(response.data);
     const rawItems = parsed?.rss?.channel?.item ?? [];

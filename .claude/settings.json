@@ -1,7 +1,15 @@
 {
   "permissions": {
     "allow": [
-      "Bash(npm test:*)"
+      "Bash(npm test:*)",
+      "Bash(ls *.md)",
+      "Bash(curl -sv --max-time 10 \"https://www.jobserve.com/gb/en/JobSearch/?Keywords=BIM&Location=London&Radius=30&RSS=1\")",
+      "Bash(curl -s -L -o /dev/null -w \"%{http_code}\" --max-time 10 \"https://www.jobserve.com/gb/en/JobSearch/?Keywords=BIM&Location=London&Radius=30\")",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" --max-time 10 \"https://www.jobserve.com/gb/en/man/JobSearch.aspx?Keywords=BIM&Location=London&Radius=30&RSS=1\")",
+      "Bash(curl -sv --max-time 10 \"https://www.jobserve.com/gb/en/JobSearch/?Keywords=BIM&Location=London&Radius=30\")",
+      "Bash(curl -s --max-time 10 -A \"Mozilla/5.0 \\(Windows NT 10.0; Win64; x64\\) AppleWebKit/537.36\" -H \"Accept: application/json, */*\" \"https://www.jobserve.com/gb/en/JobServeHome.aspx?Keywords=BIM&Location=London&Radius=30&RSS=1\")",
+      "Bash(curl -s -L -o /dev/null -w \"%{http_code}\" --max-time 10 -A \"Mozilla/5.0\" \"https://www.jobserve.com/gb/en/job-search/?Keywords=BIM&Location=London&Radius=30&RSS=1&outputtype=rss\")",
+      "Bash(curl -s -L -o /dev/null -w \"%{http_code}\" --max-time 10 -A \"Mozilla/5.0\" \"https://www.jobserve.com/gb/en/JobServeHome.aspx?Keywords=BIM&Location=London&Radius=30&outputtype=rss\")"
     ]
   }
 }

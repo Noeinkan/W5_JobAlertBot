@@ -5,12 +5,14 @@ import { buildSalaryInfo } from '../utils/salary.js';
 import { isRelevantJob } from '../utils/relevance.js';
 import { logger } from '../utils/logger.js';
 
+// public.api.careerjet.co.uk has been decommissioned (DNS no longer resolves).
+// Set CAREERJET_ENABLED=true in .env to re-enable if a working endpoint is found.
 const baseUrl = 'https://public.api.careerjet.co.uk/search';
 
 export const careerjetSource = {
   name: 'careerjet',
   isConfigured() {
-    return true;
+    return String(process.env.CAREERJET_ENABLED ?? 'false').toLowerCase() === 'true';
   },
   async fetchJobs(search) {
     const response = await withRetry(

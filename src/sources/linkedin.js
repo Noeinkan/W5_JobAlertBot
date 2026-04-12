@@ -35,7 +35,12 @@ export const linkedinSource = {
     return true;
   },
   async fetchJobs(search) {
-    const location = search.location ? `${search.location}, United Kingdom` : 'United Kingdom';
+    const locationOverride = search.source_options?.linkedin?.location;
+    const location = locationOverride
+      ? locationOverride
+      : search.location
+        ? `${search.location}, United Kingdom`
+        : 'United Kingdom';
 
     const params = new URLSearchParams({
       keywords: search.query,

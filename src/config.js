@@ -157,7 +157,7 @@ export const env = {
   enrichDelayMs: Number.parseInt(process.env.ENRICH_DELAY_MS ?? '500', 10),
   httpMaxRetries: Number.parseInt(process.env.HTTP_MAX_RETRIES ?? '3', 10),
   httpRetryDelayMs: Number.parseInt(process.env.HTTP_RETRY_DELAY_MS ?? '1500', 10),
-  logLevel: process.env.LOG_LEVEL ?? 'info',
+  logLevel: process.env.LOG_LEVEL ?? 'debug',
   startupRunOnBoot: String(process.env.STARTUP_RUN_ON_BOOT ?? 'false').toLowerCase() === 'true',
   runOnce: process.argv.includes('--once') || String(process.env.RUN_ONCE ?? 'false').toLowerCase() === 'true',
 };

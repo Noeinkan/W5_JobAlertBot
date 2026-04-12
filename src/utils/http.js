@@ -16,7 +16,7 @@ export function isRetryableError(error) {
     return isRetryableStatus(status);
   }
 
-  return Boolean(error?.code && ['ECONNRESET', 'ETIMEDOUT', 'ECONNABORTED', 'ENOTFOUND'].includes(error.code));
+  return Boolean(error?.code && ['ECONNRESET', 'ETIMEDOUT', 'ECONNABORTED'].includes(error.code));
 }
 
 function delay(ms) {
