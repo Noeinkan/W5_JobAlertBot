@@ -21,5 +21,22 @@ module.exports = {
       error_file: 'logs/pm2-error.log',
       merge_logs: true,
     },
+    {
+      name: 'dashboard',
+      script: 'src/dashboard.js',
+      interpreter: 'node',
+      cwd: __dirname,
+      instances: 1,
+      autorestart: true,
+      watch: false,
+      time: true,
+      env: {
+        NODE_ENV: 'production',
+        DASHBOARD_HOST: '0.0.0.0',
+      },
+      out_file: 'logs/dashboard-out.log',
+      error_file: 'logs/dashboard-error.log',
+      merge_logs: true,
+    },
   ],
 };
