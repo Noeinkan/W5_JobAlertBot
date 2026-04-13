@@ -13,8 +13,9 @@ const RUNS_DIR = path.join(__dirname, '..', 'logs', 'runs');
 
 const portArg = process.argv.indexOf('--port');
 const PORT = portArg !== -1 ? parseInt(process.argv[portArg + 1], 10) : 3099;
-const HOST  = process.env.DASHBOARD_HOST  || '0.0.0.0';
-const TOKEN = process.env.DASHBOARD_TOKEN || '';        // optional bearer token
+const HOST      = process.env.DASHBOARD_HOST      || '0.0.0.0';
+const TOKEN     = process.env.DASHBOARD_TOKEN     || '';  // optional bearer token
+const BASE_PATH = (process.env.DASHBOARD_BASE_PATH || '').replace(/\/$/, ''); // e.g. '/job_dashboard'
 
 // ── Bot process state ─────────────────────────────────────────────────────────
 let botProc   = null;
@@ -321,6 +322,7 @@ tbody td a:hover{text-decoration:underline}
 </main>
 
 <script>
+const API_BASE = '${BASE_PATH}';
 // ── Constants ─────────────────────────────────────────────────────────────────
 const OUTCOME_COLORS = {
   notified:           '#4ade80',
@@ -681,7 +683,7 @@ function escHtml(s) {
 // ── Boot ──────────────────────────────────────────────────────────────────────
 async function loadFile(filename) {
   document.getElementById('main').innerHTML = '<div id="loading">Loading…</div>';
-  const res = await fetch('/api/data?file=' + encodeURIComponent(filename));
+  const res = await fetch(API_BASE + '/api/data?file=' + encodeURIComponent(filename));
   if (!res.ok) throw new Error(await res.text());
   const data = await res.json();
   const d = data.runAt ? new Date(data.runAt).toLocaleString('en-GB') : '';
@@ -690,7 +692,7 @@ async function loadFile(filename) {
 }
 
 async function init() {
-  const res = await fetch('/api/files');
+  const res = await fetch(API_BASE + '/api/files');
   const files = await res.json();
   const sel = document.getElementById('fileSelect');
   files.forEach((f, i) => {
@@ -733,7 +735,7 @@ function applyStatus(s) {
 
 async function refreshFiles() {
   try {
-    const res   = await fetch('/api/files');
+    const res   = await fetch(API_BASE + '/api/files');
     const files = await res.json();
     const sel   = document.getElementById('fileSelect');
     const cur   = sel.value;
@@ -759,7 +761,7 @@ async function botAction(action) {
   const headers = { 'Content-Type': 'application/json' };
   if (token) headers['X-Dashboard-Token'] = token;
 
-  const res = await fetch('/api/bot/' + action, { method: 'POST', headers });
+  const res = await fetch(API_BASE + '/api/bot/' + action, { method: 'POST', headers });
   if (res.status === 401) {
     const t = prompt('Enter Dashboard Token:');
     if (t) { localStorage.setItem('dashboardToken', t); botAction(action); }
@@ -785,7 +787,7 @@ stopBotBtn.addEventListener('click', () => botAction('stop'));
 
 // SSE connection
 function connectSSE() {
-  const es = new EventSource('/api/bot/stream');
+  const es = new EventSource(API_BASE + '/api/bot/stream');
   es.onmessage = e => {
     const msg = JSON.parse(e.data);
     if (msg.type === 'status') applyStatus(msg.status);
@@ -798,7 +800,7 @@ function connectSSE() {
 }
 
 // Load initial bot state then open SSE
-fetch('/api/bot/status').then(r => r.json()).then(s => { applyStatus(s); connectSSE(); });
+fetch(API_BASE + '/api/bot/status').then(r => r.json()).then(s => { applyStatus(s); connectSSE(); });
 </script>
 </body>
 </html>`;
@@ -806,21 +808,24 @@ fetch('/api/bot/status').then(r => r.json()).then(s => { applyStatus(s); connect
 // ── HTTP server ───────────────────────────────────────────────────────────────
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, `http://localhost:${PORT}`);
+  const pathname = BASE_PATH && url.pathname.startsWith(BASE_PATH)
+    ? url.pathname.slice(BASE_PATH.length) || '/'
+    : url.pathname;
 
-  if (url.pathname === '/api/files') {
+  if (pathname === '/api/files') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify(listCsvFiles()));
     return;
   }
 
   // ── Bot control endpoints ─────────────────────────────────────────────────
-  if (url.pathname === '/api/bot/status') {
+  if (pathname === '/api/bot/status') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify(botStatus));
     return;
   }
 
-  if (url.pathname === '/api/bot/stream') {
+  if (pathname === '/api/bot/stream') {
     res.writeHead(200, {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache',
@@ -832,19 +837,19 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  if ((url.pathname === '/api/bot/start-once' || url.pathname === '/api/bot/start-daemon') && req.method === 'POST') {
+  if ((pathname === '/api/bot/start-once' || pathname === '/api/bot/start-daemon') && req.method === 'POST') {
     if (TOKEN && req.headers['x-dashboard-token'] !== TOKEN) {
       res.writeHead(401); res.end('Unauthorized'); return;
     }
     if (botProc) { res.writeHead(409); res.end('Already running'); return; }
-    const mode = url.pathname.endsWith('once') ? 'once' : 'daemon';
+    const mode = pathname.endsWith('once') ? 'once' : 'daemon';
     startBot(mode);
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ ok: true }));
     return;
   }
 
-  if (url.pathname === '/api/bot/stop' && req.method === 'POST') {
+  if (pathname === '/api/bot/stop' && req.method === 'POST') {
     if (TOKEN && req.headers['x-dashboard-token'] !== TOKEN) {
       res.writeHead(401); res.end('Unauthorized'); return;
     }
@@ -854,7 +859,7 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  if (url.pathname === '/api/data') {
+  if (pathname === '/api/data') {
     const file = url.searchParams.get('file');
     if (!file || file.includes('..') || !file.endsWith('.csv')) {
       res.writeHead(400); res.end('Bad file param'); return;
