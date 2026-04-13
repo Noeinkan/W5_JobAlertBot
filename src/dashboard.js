@@ -6,12 +6,49 @@ import http from 'http';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { spawn } from 'child_process';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const RUNS_DIR = path.join(__dirname, '..', 'logs', 'runs');
 
 const portArg = process.argv.indexOf('--port');
 const PORT = portArg !== -1 ? parseInt(process.argv[portArg + 1], 10) : 3099;
+const HOST  = process.env.DASHBOARD_HOST  || '0.0.0.0';
+const TOKEN = process.env.DASHBOARD_TOKEN || '';        // optional bearer token
+
+// ── Bot process state ─────────────────────────────────────────────────────────
+let botProc   = null;
+let botStatus = { state: 'idle', mode: '', startedAt: null, exitCode: null };
+const sseClients = new Set();
+
+function pushSSE(obj) {
+  const payload = `data: ${JSON.stringify(obj)}\n\n`;
+  for (const r of sseClients) r.write(payload);
+}
+
+function startBot(mode) {
+  if (botProc) return false;
+  const isOnce = mode === 'once';
+  botStatus = { state: 'running', mode, startedAt: new Date().toISOString(), exitCode: null };
+  pushSSE({ type: 'status', status: botStatus });
+
+  botProc = spawn('node', ['src/index.js'], {
+    cwd:  path.join(__dirname, '..'),
+    env:  { ...process.env, RUN_ONCE: isOnce ? 'true' : '' },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+
+  const onData = chunk => pushSSE({ type: 'log', line: chunk.toString() });
+  botProc.stdout.on('data', onData);
+  botProc.stderr.on('data', onData);
+
+  botProc.on('close', code => {
+    botProc = null;
+    botStatus = { ...botStatus, state: code === 0 ? 'done' : 'error', exitCode: code };
+    pushSSE({ type: 'status', status: botStatus });
+  });
+  return true;
+}
 
 // ── CSV parser ────────────────────────────────────────────────────────────────
 function parseCsv(raw) {
@@ -53,6 +90,63 @@ function listCsvFiles() {
     .reverse();
 }
 
+// ── Contract rate detection + yearly equivalent ───────────────────────────────
+// Assumptions: 220 billable days/yr (252 – 8 BH – ~24 holidays), 7.5 hr/day,
+// ~22.5% cost deduction (corp tax, NI, accountant, insurance) for net equivalent.
+const BILLABLE_DAYS = 220;
+const HOURS_PER_DAY = 7.5;
+const COST_RATE     = 0.225;   // deduction for Ltd co. overhead
+
+function toYearly(rateMin, rateMax, type) {
+  const gross = v => type === 'day' ? v * BILLABLE_DAYS : v * HOURS_PER_DAY * BILLABLE_DAYS;
+  const net   = v => Math.round(gross(v) * (1 - COST_RATE));
+  const fmt   = v => `£${Math.round(v / 1000)}k`;
+
+  const hasMax = rateMax && rateMax !== rateMin && rateMax < 10000;
+  const grossMin = gross(rateMin);
+  const netMin   = net(rateMin);
+
+  if (hasMax) {
+    const netMax = net(rateMax);
+    return {
+      yearlyGross: `${fmt(gross(rateMin))}–${fmt(gross(rateMax))} gross/yr`,
+      yearlyNet:   `${fmt(netMin)}–${fmt(netMax)} net equiv`,
+      yearlyNetMin: netMin,
+      yearlyNetMax: netMax,
+    };
+  }
+  return {
+    yearlyGross: `${fmt(grossMin)} gross/yr`,
+    yearlyNet:   `${fmt(netMin)} net equiv`,
+    yearlyNetMin: netMin,
+    yearlyNetMax: netMin,
+  };
+}
+
+const EMPTY_RATE = { rateType: '', rateDisplay: '', yearlyGross: '', yearlyNet: '', yearlyNetMin: 0, yearlyNetMax: 0 };
+
+function detectRate(row) {
+  if (row.is_contract !== 'yes') return EMPTY_RATE;
+  const text = (row.salary_text || '').toLowerCase();
+  const min  = Number(row.salary_min);
+  const max  = Number(row.salary_max);
+  if (!min || min <= 0) return EMPTY_RATE;
+
+  let type = '';
+  if (/\/day|per day|p\/d|\bday\b/.test(text))           type = 'day';
+  else if (/\/hour|\/hr|per hour|p\/h|\bhour/.test(text)) type = 'hour';
+  else if (min < 100)  type = 'hour';
+  else if (min < 2000) type = 'day';
+
+  if (!type) return EMPTY_RATE;
+
+  const unit   = type === 'day' ? '/day' : '/hr';
+  const hasMax = max && max !== min && max < 10000;
+  const display = hasMax ? `£${min}–£${max}${unit}` : `£${min}${unit}`;
+
+  return { rateType: type, rateDisplay: display, ...toYearly(min, max, type) };
+}
+
 // ── Aggregate stats from parsed rows ─────────────────────────────────────────
 function aggregate(rows) {
   const byOutcome = {};
@@ -61,6 +155,8 @@ function aggregate(rows) {
   const byRag     = {};
   const salaryVals = [];
 
+  const contractRates = { day: [], hour: [] };
+
   for (const r of rows) {
     byOutcome[r.outcome] = (byOutcome[r.outcome] || 0) + 1;
     bySource[r.source]   = (bySource[r.source]   || 0) + 1;
@@ -68,6 +164,15 @@ function aggregate(rows) {
     bySearch[label]      = (bySearch[label]      || 0) + 1;
     if (r.rag_rating)    byRag[r.rag_rating]     = (byRag[r.rag_rating] || 0) + 1;
     if (r.salary_min && Number(r.salary_min) > 0) salaryVals.push(Number(r.salary_min));
+
+    // enrich row with rate info
+    const rate = detectRate(r);
+    r.rateType    = rate.rateType;
+    r.rateDisplay = rate.rateDisplay;
+    r.yearlyGross = rate.yearlyGross;
+    r.yearlyNet   = rate.yearlyNet;
+    if (rate.rateType === 'day'  && Number(r.salary_min)) contractRates.day.push({ raw: Number(r.salary_min), netMin: rate.yearlyNetMin, netMax: rate.yearlyNetMax });
+    if (rate.rateType === 'hour' && Number(r.salary_min)) contractRates.hour.push({ raw: Number(r.salary_min), netMin: rate.yearlyNetMin, netMax: rate.yearlyNetMax });
   }
 
   const salaryBuckets = { '<30k': 0, '30-50k': 0, '50-70k': 0, '70-100k': 0, '>100k': 0 };
@@ -89,7 +194,8 @@ function aggregate(rows) {
     runAt:       rows[0]?.run_at  ?? '',
     trigger:     rows[0]?.trigger ?? '',
     byOutcome, bySource, bySearch, byRag, salaryBuckets,
-    rows,   // ← full row data for the table
+    contractRates,
+    rows,
   };
 }
 
@@ -126,7 +232,7 @@ main{padding:1.25rem;display:grid;gap:1.25rem}
 .chart-wrap.tall{height:270px}
 
 /* ── Table section ── */
-.table-card{background:#1a1d27;border:1px solid #2d3148;border-radius:10px;padding:1.1rem;overflow:hidden}
+.table-card{background:#1a1d27;border:1px solid #2d3148;border-radius:10px;padding:1.1rem}
 .table-toolbar{display:flex;align-items:center;gap:.75rem;margin-bottom:.9rem;flex-wrap:wrap}
 .table-toolbar h2{font-size:.78rem;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:.06em;flex:1;min-width:120px}
 #globalSearch{background:#252836;color:#e2e8f0;border:1px solid #3d4268;border-radius:6px;padding:.35rem .7rem;font-size:.83rem;width:220px}
@@ -163,6 +269,8 @@ tbody td a:hover{text-decoration:underline}
 .badge.filtered_match   {background:#3b1f08;color:#fb923c}
 .badge.filtered_relevance{background:#2e0f3b;color:#e879f9}
 .badge.error            {background:#1e2235;color:#94a3b8}
+.badge.rate-day {background:#0c2a3b;color:#38bdf8}
+.badge.rate-hour{background:#1a1040;color:#a78bfa}
 .badge.Green{background:#14532d;color:#4ade80}
 .badge.Amber{background:#3b2e08;color:#fbbf24}
 .badge.Red  {background:#3b1111;color:#f87171}
@@ -172,8 +280,29 @@ tbody td a:hover{text-decoration:underline}
 .top-scroll-inner{height:1px}
 .bottom-scroll-wrap{overflow-x:auto;overflow-y:hidden;height:14px;position:sticky;bottom:0;background:#1a1d27;border-top:1px solid #2d3148;z-index:20}
 .bottom-scroll-inner{height:1px}
+.cr-note{font-size:.72rem;color:#475569;margin-bottom:.5rem;font-style:italic}
+.cr-row{display:flex;align-items:center;gap:.75rem;padding:.55rem 0;border-bottom:1px solid #1e2235;flex-wrap:wrap}
+.cr-row:last-child{border-bottom:none}
+.cr-count {font-size:.82rem;color:#94a3b8}
+.cr-range {font-size:.82rem;color:#e2e8f0;font-weight:500}
+.cr-yearly{font-size:.8rem;color:#94a3b8;margin-left:auto}
+.yearly-gross{color:#94a3b8;font-size:.8rem}
+.yearly-net  {color:#4ade80;font-size:.8rem;font-weight:600}
 #loading{text-align:center;padding:4rem;color:#64748b;font-size:1.1rem}
 #error  {text-align:center;padding:4rem;color:#f87171}
+/* ── Bot controls ── */
+.run-btn{background:#6366f1;color:#fff;border:none;border-radius:6px;padding:.35rem .85rem;font-size:.83rem;font-weight:600;cursor:pointer;transition:background .15s,opacity .15s;white-space:nowrap}
+.run-btn:hover:not(:disabled){background:#4f46e5}
+.run-btn:disabled{opacity:.5;cursor:default}
+.run-btn.stop{background:#dc2626}
+.run-btn.stop:hover:not(:disabled){background:#b91c1c}
+#botStateBadge{font-size:.75rem;padding:.2rem .55rem;border-radius:4px;font-weight:600;white-space:nowrap}
+#botStateBadge.idle   {background:#1e2235;color:#64748b}
+#botStateBadge.running{background:#0c2a3b;color:#38bdf8;animation:pulse 1.4s ease-in-out infinite}
+#botStateBadge.done   {background:#14532d;color:#4ade80}
+#botStateBadge.error  {background:#3b1111;color:#f87171}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.55}}
+#logPanel{background:#0b0d12;border-bottom:1px solid #2d3148;padding:.6rem 1.25rem;font-family:monospace;font-size:.73rem;color:#94a3b8;max-height:200px;overflow-y:auto;white-space:pre-wrap;word-break:break-all;display:none}
 </style>
 </head>
 <body>
@@ -181,7 +310,12 @@ tbody td a:hover{text-decoration:underline}
   <h1>Job Alert Bot — Run Dashboard</h1>
   <select id="fileSelect"></select>
   <span id="meta"></span>
+  <span id="botStateBadge" class="idle">idle</span>
+  <button id="runOnceBtn" class="run-btn" title="Run one fetch cycle now">▶ Run Once</button>
+  <button id="startBotBtn" class="run-btn" title="Start the bot scheduler (npm start)">▶ Start Bot</button>
+  <button id="stopBotBtn"  class="run-btn stop" title="Stop the running process" style="display:none">■ Stop</button>
 </header>
+<div id="logPanel"></div>
 <main id="main">
   <div id="loading">Loading…</div>
 </main>
@@ -210,6 +344,10 @@ const COLS = [
   { key: 'search_name', label: 'Search',      type: 'select', width: '150px' },
   { key: 'salary_text', label: 'Salary',      type: 'text',   width: '130px' },
   { key: 'is_contract', label: 'Contract',    type: 'select', width: '85px'  },
+  { key: 'rateType',    label: 'Rate type',  type: 'select', width: '85px'  },
+  { key: 'rateDisplay', label: 'Rate',       type: 'text',   width: '130px', isRate: true },
+  { key: 'yearlyGross', label: '~Gross/yr',  type: 'text',   width: '130px', isYearly: 'gross' },
+  { key: 'yearlyNet',   label: '~Net equiv', type: 'text',   width: '130px', isYearly: 'net'   },
   { key: 'outcome',     label: 'Outcome',     type: 'select', width: '130px' },
   { key: 'rag_rating',  label: 'RAG',         type: 'select', width: '70px'  },
   { key: 'rag_score',   label: 'Score',       type: 'text',   width: '60px'  },
@@ -292,6 +430,12 @@ function renderTable() {
     let cell;
     if (c.isLink && v) {
       cell = '<a href="' + escHtml(v) + '" target="_blank" rel="noreferrer">open ↗</a>';
+    } else if (c.isRate && v) {
+      const cls = r.rateType === 'day' ? 'rate-day' : 'rate-hour';
+      cell = '<span class="badge ' + cls + '">' + escHtml(v) + '</span>';
+    } else if (c.isYearly && v) {
+      const cls = c.isYearly === 'net' ? 'yearly-net' : 'yearly-gross';
+      cell = '<span class="' + cls + '">' + escHtml(v) + '</span>';
     } else if (c.key === 'outcome' && v) {
       cell = '<span class="badge ' + escHtml(v) + '">' + escHtml(v) + '</span>';
     } else if (c.key === 'rag_rating' && v) {
@@ -443,6 +587,7 @@ function render(data) {
       <div class="card"><h2>Jobs by source</h2>         <div class="chart-wrap tall"><canvas id="cSource"></canvas></div></div>
       <div class="card"><h2>Jobs by search</h2>         <div class="chart-wrap tall"><canvas id="cSearch"></canvas></div></div>
       <div class="card"><h2>Salary range</h2>           <div class="chart-wrap"><canvas id="cSalary"></canvas></div></div>
+      <div class="card" id="contractCard"><h2>Contract rates</h2><div id="contractStats"></div></div>
     </div>
     \${buildTableHTML(tableRows)}
   \`;
@@ -492,6 +637,38 @@ function render(data) {
     backgroundColor: '#6366f1', borderRadius: 4,
   }], { plugins: { legend: { display: false } } });
 
+  // contract rates card
+  const cr = data.contractRates || { day: [], hour: [] };
+  const fmtK = v => '£' + Math.round(v / 1000) + 'k';
+  const avg  = arr => arr.length ? Math.round(arr.reduce((a,b) => a+b,0) / arr.length) : null;
+  const contractEl = document.getElementById('contractStats');
+  if (contractEl) {
+    if (!cr.day.length && !cr.hour.length) {
+      contractEl.innerHTML = '<p style="color:#64748b;font-size:.82rem;margin-top:.5rem">No contract rates found in this run</p>';
+    } else {
+      const renderGroup = (items, unit, badge) => {
+        if (!items.length) return '';
+        const raws    = items.map(i => i.raw);
+        const netMins = items.map(i => i.netMin);
+        const netMaxs = items.map(i => i.netMax);
+        const avgRate  = avg(raws);
+        const avgNet   = avg(netMins.map((lo,i) => Math.round((lo + netMaxs[i]) / 2)));
+        const minNet   = Math.min(...netMins);
+        const maxNet   = Math.max(...netMaxs);
+        return \`<div class="cr-row">
+          <span class="badge \${badge}">\${unit === '/day' ? 'Daily' : 'Hourly'}</span>
+          <span class="cr-count">\${items.length} role\${items.length!==1?'s':''}</span>
+          <span class="cr-range">£\${Math.min(...raws)}–£\${Math.max(...raws)}\${unit} · avg £\${avgRate}\${unit}</span>
+          <span class="cr-yearly"><span class="yearly-net">\${fmtK(minNet)}–\${fmtK(maxNet)} net equiv/yr</span> · avg \${fmtK(avgNet)}</span>
+        </div>\`;
+      };
+      contractEl.innerHTML =
+        '<p class="cr-note">220 billable days · 7.5 hr/day · ~22.5% cost deduction</p>' +
+        renderGroup(cr.day,  '/day', 'rate-day') +
+        renderGroup(cr.hour, '/hr',  'rate-hour');
+    }
+  }
+
   initTableEvents();
   renderTable();
 }
@@ -531,6 +708,97 @@ async function init() {
 init().catch(e => {
   document.getElementById('main').innerHTML = '<div id="error">' + e.message + '</div>';
 });
+
+// ── Bot controls ──────────────────────────────────────────────────────────────
+const logPanel      = document.getElementById('logPanel');
+const stateBadge    = document.getElementById('botStateBadge');
+const runOnceBtn    = document.getElementById('runOnceBtn');
+const startBotBtn   = document.getElementById('startBotBtn');
+const stopBotBtn    = document.getElementById('stopBotBtn');
+let   needsRefresh  = false;
+
+function applyStatus(s) {
+  stateBadge.className = s.state;
+  stateBadge.textContent = s.state === 'running'
+    ? (s.mode === 'once' ? 'running (once)' : 'running (bot)')
+    : s.state;
+  const running = s.state === 'running';
+  runOnceBtn.disabled  = running;
+  startBotBtn.disabled = running;
+  runOnceBtn.style.display  = running ? 'none' : '';
+  startBotBtn.style.display = running ? 'none' : '';
+  stopBotBtn.style.display  = running ? ''     : 'none';
+  if (!running && needsRefresh) { needsRefresh = false; refreshFiles(); }
+}
+
+async function refreshFiles() {
+  try {
+    const res   = await fetch('/api/files');
+    const files = await res.json();
+    const sel   = document.getElementById('fileSelect');
+    const cur   = sel.value;
+    sel.innerHTML = '';
+    files.forEach((f, i) => {
+      const opt = document.createElement('option');
+      opt.value = f;
+      opt.textContent = f.replace(/^run_/, '').replace(/(_oneshot|_bot)\\.csv$/, ' ($1).csv');
+      sel.appendChild(opt);
+    });
+    // keep selection or auto-load newest
+    if (files.includes(cur)) {
+      sel.value = cur;
+    } else if (files.length) {
+      sel.value = files[0];
+      loadFile(files[0]);
+    }
+  } catch (_) {}
+}
+
+async function botAction(action) {
+  const token = localStorage.getItem('dashboardToken') || '';
+  const headers = { 'Content-Type': 'application/json' };
+  if (token) headers['X-Dashboard-Token'] = token;
+
+  const res = await fetch('/api/bot/' + action, { method: 'POST', headers });
+  if (res.status === 401) {
+    const t = prompt('Enter Dashboard Token:');
+    if (t) { localStorage.setItem('dashboardToken', t); botAction(action); }
+    return;
+  }
+  if (!res.ok) { alert(await res.text()); }
+}
+
+runOnceBtn.addEventListener('click', () => {
+  logPanel.textContent = '';
+  logPanel.style.display = 'block';
+  needsRefresh = true;
+  botAction('start-once');
+});
+
+startBotBtn.addEventListener('click', () => {
+  logPanel.textContent = '';
+  logPanel.style.display = 'block';
+  botAction('start-daemon');
+});
+
+stopBotBtn.addEventListener('click', () => botAction('stop'));
+
+// SSE connection
+function connectSSE() {
+  const es = new EventSource('/api/bot/stream');
+  es.onmessage = e => {
+    const msg = JSON.parse(e.data);
+    if (msg.type === 'status') applyStatus(msg.status);
+    if (msg.type === 'log') {
+      logPanel.textContent += msg.line;
+      logPanel.scrollTop = logPanel.scrollHeight;
+    }
+  };
+  es.onerror = () => { es.close(); setTimeout(connectSSE, 3000); };
+}
+
+// Load initial bot state then open SSE
+fetch('/api/bot/status').then(r => r.json()).then(s => { applyStatus(s); connectSSE(); });
 </script>
 </body>
 </html>`;
@@ -542,6 +810,47 @@ const server = http.createServer((req, res) => {
   if (url.pathname === '/api/files') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify(listCsvFiles()));
+    return;
+  }
+
+  // ── Bot control endpoints ─────────────────────────────────────────────────
+  if (url.pathname === '/api/bot/status') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(botStatus));
+    return;
+  }
+
+  if (url.pathname === '/api/bot/stream') {
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection':    'keep-alive',
+    });
+    res.write(`data: ${JSON.stringify({ type: 'status', status: botStatus })}\n\n`);
+    sseClients.add(res);
+    req.on('close', () => sseClients.delete(res));
+    return;
+  }
+
+  if ((url.pathname === '/api/bot/start-once' || url.pathname === '/api/bot/start-daemon') && req.method === 'POST') {
+    if (TOKEN && req.headers['x-dashboard-token'] !== TOKEN) {
+      res.writeHead(401); res.end('Unauthorized'); return;
+    }
+    if (botProc) { res.writeHead(409); res.end('Already running'); return; }
+    const mode = url.pathname.endsWith('once') ? 'once' : 'daemon';
+    startBot(mode);
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ ok: true }));
+    return;
+  }
+
+  if (url.pathname === '/api/bot/stop' && req.method === 'POST') {
+    if (TOKEN && req.headers['x-dashboard-token'] !== TOKEN) {
+      res.writeHead(401); res.end('Unauthorized'); return;
+    }
+    if (botProc) { botProc.kill('SIGTERM'); }
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ ok: true }));
     return;
   }
 
@@ -570,6 +879,7 @@ const server = http.createServer((req, res) => {
   res.end(HTML);
 });
 
-server.listen(PORT, '127.0.0.1', () => {
-  console.log(`Dashboard running → http://localhost:${PORT}`);
+server.listen(PORT, HOST, () => {
+  console.log(`Dashboard running → http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}`);
+  if (TOKEN) console.log('Dashboard token protection: enabled');
 });
