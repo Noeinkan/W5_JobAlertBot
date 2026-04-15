@@ -196,7 +196,164 @@ function aggregate(rows) {
     trigger:     rows[0]?.trigger ?? '',
     byOutcome, bySource, bySearch, byRag, salaryBuckets,
     contractRates,
+    analytics: deriveAnalytics(rows, byOutcome),
     rows,
+  };
+}
+
+function parseIsoDate(value) {
+  if (!value) return null;
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+function getRowDate(row) {
+  return parseIsoDate(row.posted_at) || parseIsoDate(row.run_at);
+}
+
+function makeBucketLabel(startDate, endDate, index) {
+  if (startDate && endDate) {
+    const fmt = d => d.toLocaleString('en-GB', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+    return fmt(startDate) + '–' + fmt(endDate);
+  }
+  return 'Slice ' + (index + 1);
+}
+
+function buildSequenceBuckets(rows, bucketCount = 10) {
+  if (!rows.length) return { labels: [], buckets: [] };
+  const withDate = rows.map((row, i) => ({ row, index: i, date: getRowDate(row) }));
+  const valid = withDate.filter(r => r.date);
+  const useDates = valid.length >= Math.max(5, Math.floor(rows.length * 0.2));
+  const labels = [];
+  const buckets = [];
+
+  if (useDates) {
+    const minTs = Math.min(...valid.map(v => v.date.getTime()));
+    const maxTs = Math.max(...valid.map(v => v.date.getTime()));
+    const span = Math.max(1, maxTs - minTs);
+    for (let i = 0; i < bucketCount; i++) {
+      const startTs = minTs + (span * i / bucketCount);
+      const endTs = minTs + (span * (i + 1) / bucketCount);
+      labels.push(makeBucketLabel(new Date(startTs), new Date(endTs), i));
+      buckets.push([]);
+    }
+    for (const item of withDate) {
+      const ts = item.date ? item.date.getTime() : minTs;
+      const idx = Math.min(bucketCount - 1, Math.max(0, Math.floor(((ts - minTs) / span) * bucketCount)));
+      buckets[idx].push(item.row);
+    }
+  } else {
+    for (let i = 0; i < bucketCount; i++) {
+      labels.push(makeBucketLabel(null, null, i));
+      buckets.push([]);
+    }
+    withDate.forEach((item, i) => {
+      const idx = Math.min(bucketCount - 1, Math.floor(i * bucketCount / rows.length));
+      buckets[idx].push(item.row);
+    });
+  }
+
+  return { labels, buckets };
+}
+
+function deriveAnalytics(rows, byOutcome) {
+  const filteredEntries = Object.entries(byOutcome)
+    .filter(([k]) => k.startsWith('filtered_'))
+    .sort((a, b) => b[1] - a[1]);
+  const filteredTotal = filteredEntries.reduce((sum, [, n]) => sum + n, 0) || 1;
+  let cumulative = 0;
+  const pareto = filteredEntries.map(([label, value]) => {
+    cumulative += value;
+    return { label, value, cumulativePct: Math.round((cumulative / filteredTotal) * 1000) / 10 };
+  });
+
+  const sourceMap = {};
+  const searchMap = {};
+  const ragScatter = [];
+  const schedule = Array.from({ length: 7 }, () => Array(24).fill(0));
+  rows.forEach((r, idx) => {
+    const source = r.source || 'unknown';
+    const search = r.search_name || r.search_id || 'unknown';
+    sourceMap[source] ||= { fetched: 0, notified: 0, errors: 0 };
+    searchMap[search] ||= { total: 0, notified: 0, filtered: 0, byOutcome: {} };
+    sourceMap[source].fetched++;
+    searchMap[search].total++;
+    searchMap[search].byOutcome[r.outcome || 'unknown'] = (searchMap[search].byOutcome[r.outcome || 'unknown'] || 0) + 1;
+    if (r.outcome === 'notified') {
+      sourceMap[source].notified++;
+      searchMap[search].notified++;
+    }
+    if ((r.outcome || '').startsWith('filtered_')) searchMap[search].filtered++;
+    if (r.outcome === 'error') sourceMap[source].errors++;
+    const rag = Number(r.rag_score);
+    if (!Number.isNaN(rag)) ragScatter.push({ x: idx + 1, y: rag, outcome: r.outcome || 'unknown' });
+
+    const d = getRowDate(r);
+    if (d) {
+      schedule[d.getUTCDay()][d.getUTCHours()]++;
+    }
+  });
+
+  const sourceQuality = Object.entries(sourceMap).map(([source, v]) => ({
+    source,
+    fetched: v.fetched,
+    notified: v.notified,
+    passed: Math.max(0, v.fetched - (v.errors || 0)),
+    reliability: Math.round(((v.fetched - v.errors) / Math.max(1, v.fetched)) * 1000) / 10,
+    conversion: Math.round((v.notified / Math.max(1, v.fetched)) * 1000) / 10,
+  })).sort((a, b) => b.fetched - a.fetched);
+
+  const searchEffectiveness = Object.entries(searchMap).map(([search, v]) => ({
+    search,
+    total: v.total,
+    notifyRate: Math.round((v.notified / Math.max(1, v.total)) * 1000) / 10,
+    filterRate: Math.round((v.filtered / Math.max(1, v.total)) * 1000) / 10,
+    byOutcome: v.byOutcome,
+  })).sort((a, b) => b.total - a.total);
+
+  const sequence = buildSequenceBuckets(rows, Math.min(12, Math.max(6, Math.ceil(rows.length / 12) || 6)));
+  const seqMetrics = sequence.buckets.map(bucket => {
+    const fetched = bucket.length;
+    const notified = bucket.filter(r => r.outcome === 'notified').length;
+    const filtered = bucket.filter(r => (r.outcome || '').startsWith('filtered_')).length;
+    return { fetched, notified, filtered };
+  });
+  const notifiedSeries = seqMetrics.map(s => s.notified);
+  const mean = notifiedSeries.reduce((a, b) => a + b, 0) / Math.max(1, notifiedSeries.length);
+  const variance = notifiedSeries.reduce((acc, v) => acc + ((v - mean) ** 2), 0) / Math.max(1, notifiedSeries.length);
+  const stdDev = Math.sqrt(variance);
+  const ucl = mean + (3 * stdDev);
+  const lcl = Math.max(0, mean - (3 * stdDev));
+
+  return {
+    pareto,
+    sourceQuality,
+    searchEffectiveness,
+    schedule,
+    ragScatter,
+    sequence: {
+      labels: sequence.labels,
+      fetched: seqMetrics.map(s => s.fetched),
+      notified: seqMetrics.map(s => s.notified),
+      filtered: seqMetrics.map(s => s.filtered),
+      cumulativeFetched: seqMetrics.reduce((arr, s, i) => {
+        arr.push((arr[i - 1] || 0) + s.fetched);
+        return arr;
+      }, []),
+      cumulativeNotified: seqMetrics.reduce((arr, s, i) => {
+        arr.push((arr[i - 1] || 0) + s.notified);
+        return arr;
+      }, []),
+      cumulativeFiltered: seqMetrics.reduce((arr, s, i) => {
+        arr.push((arr[i - 1] || 0) + s.filtered);
+        return arr;
+      }, []),
+      control: {
+        mean: Math.round(mean * 100) / 100,
+        ucl: Math.round(ucl * 100) / 100,
+        lcl: Math.round(lcl * 100) / 100,
+      },
+    },
   };
 }
 
@@ -229,9 +386,31 @@ main{padding:1.25rem;display:grid;gap:1.25rem}
 .charts-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr));gap:1.25rem}
 .card{background:#1a1d27;border:1px solid #2d3148;border-radius:10px;padding:1.1rem}
 .card,.kpi,.table-card{min-width:0}
-.card h2{font-size:.78rem;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:.06em;margin-bottom:.9rem}
+.card h2{font-size:.78rem;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:.06em;margin-bottom:.9rem;display:flex;align-items:center;gap:.45rem}
+.help-tip{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;border:1px solid #3d4268;background:#252836;color:#a5b4fc;font-size:.68rem;cursor:help;line-height:1}
+.help-tip:focus{outline:2px solid #6366f1}
+.help-tip:hover,.help-tip:focus{background:#2f3552;color:#c7d2fe}
+.scope-badge{display:inline-flex;align-items:center;padding:.2rem .5rem;border-radius:999px;background:#1e2235;border:1px solid #2d3148;color:#93c5fd;font-size:.7rem;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .chart-wrap{position:relative;height:210px}
 .chart-wrap.tall{height:270px}
+.chart-wrap.xtall{height:320px}
+.help-glossary{background:#1a1d27;border:1px solid #2d3148;border-radius:10px;padding:1.1rem}
+.help-glossary h2{font-size:.78rem;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:.06em;margin-bottom:.7rem}
+.help-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:.75rem}
+.help-item{font-size:.8rem;color:#cbd5e1;background:#161a29;border:1px solid #222741;border-radius:8px;padding:.6rem .7rem}
+.help-item strong{display:block;color:#a5b4fc;font-size:.74rem;text-transform:uppercase;letter-spacing:.04em;margin-bottom:.25rem}
+.diagram-card{background:#1a1d27;border:1px solid #2d3148;border-radius:10px;padding:1.1rem}
+.diagram-header{display:flex;align-items:center;justify-content:space-between;gap:.6rem;flex-wrap:wrap;margin-bottom:.7rem}
+.diagram-title{font-size:.78rem;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:.06em}
+.diagram-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:.85rem}
+.diagram-box{background:#161a29;border:1px solid #222741;border-radius:8px;padding:.75rem}
+.diagram-flow{display:grid;gap:.6rem}
+.flow-step{display:flex;align-items:center;justify-content:space-between;gap:.45rem;padding:.45rem .55rem;border-radius:6px;background:#1e2235;color:#cbd5e1;font-size:.8rem}
+.flow-step::after{content:'→';color:#6366f1;font-weight:700}
+.flow-step:last-child::after{content:''}
+.schema-row{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:.4rem;font-size:.79rem;color:#cbd5e1}
+.schema-node{background:#1e2235;border:1px solid #2d3148;border-radius:6px;padding:.45rem .5rem}
+.schema-join{color:#818cf8;font-weight:700}
 
 /* ── Table section ── */
 .table-card{background:#1a1d27;border:1px solid #2d3148;border-radius:10px;padding:1.1rem}
@@ -316,6 +495,7 @@ tbody td a:hover{text-decoration:underline}
   .charts-grid{grid-template-columns:1fr}
   .chart-wrap{height:230px}
   .chart-wrap.tall{height:260px}
+  .chart-wrap.xtall{height:280px}
   .table-toolbar h2{flex-basis:100%}
   #globalSearch{width:100%;max-width:none}
 }
@@ -327,6 +507,7 @@ tbody td a:hover{text-decoration:underline}
   .kpi-row{grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:.75rem}
   .kpi .val{font-size:1.55rem}
   .table-wrap{max-width:100%}
+  .help-grid,.diagram-grid{grid-template-columns:1fr}
 }
 </style>
 </head>
@@ -361,6 +542,25 @@ const OUTCOME_COLORS = {
 };
 const RAG_COLORS = { Green: '#4ade80', Amber: '#fbbf24', Red: '#f87171' };
 const PALETTE = ['#6366f1','#22d3ee','#f59e0b','#10b981','#ec4899','#a78bfa','#fb923c','#38bdf8','#84cc16','#e11d48'];
+const DOW_LABELS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+const HELP_TEXT = {
+  outcome: 'What: Distribution of row outcomes in this selected CSV. Why: Quickly see signal vs noise. Read: More notified with fewer filtered outcomes is better.',
+  rag: 'What: Green/Amber/Red split for rated rows. Why: Shows relevance quality mix. Read: More Green usually means higher-fit alerts.',
+  source: 'What: Total rows by source in the selected CSV. Why: Detect source dominance. Read: Very skewed sources may mask other opportunities.',
+  search: 'What: Rows by configured search. Why: Compare query yield. Read: High volume with low notify suggests noisy search terms.',
+  salary: 'What: Salary band distribution. Why: Validate pay target alignment. Read: Bands should match your preferred market range.',
+  sourceQuality: 'What: Source-level fetched, passed and notified counts. Why: Measure source quality, not only volume. Read: Strong sources have higher notified/fetched ratios.',
+  outcomesOverTime: 'What: Outcome mix over sequence slices inside this selected CSV. Why: Spot deterioration during a run. Read: Rising filtered slices can suggest source/query drift.',
+  pareto: 'What: Filter reasons sorted by impact with cumulative %. Why: Identify biggest blockers quickly. Read: Target the top one or two causes first.',
+  searchHeatmap: 'What: Search by outcome-rate heatmap bubbles. Why: Compare effectiveness per search. Read: Brighter notified cells indicate higher signal queries.',
+  reliability: 'What: Per-source success ratio in this selected CSV. Why: Catch weak sources in-run. Read: Lower ratios imply errors or poor quality output.',
+  control: 'What: Notified counts with mean and control limits per sequence slice. Why: Detect abnormal variation. Read: Points outside limits are potential anomalies.',
+  throughput: 'What: Cumulative fetched/notified/filtered over sequence slices. Why: Understand throughput shape within this CSV. Read: Healthy runs usually increase notified steadily.',
+  schedule: 'What: Day-hour activity heatmap from row timestamps. Why: Understand when captured jobs cluster. Read: Hot cells show active posting windows.',
+  scatter: 'What: RAG score scatter by row order and outcome color. Why: Validate scoring vs decision outcomes. Read: Useful signals cluster at higher scores.',
+  pipeline: 'What: High-level ingest pipeline for selected CSV rows. Why: Explain where each metric comes from. Read: Each stage transforms or filters rows.',
+  schema: 'What: CSV row schema and derived metric grouping. Why: Clarify data lineage for charts. Read: Derived views are computed only from current file.',
+};
 
 // ── Table columns definition ──────────────────────────────────────────────────
 const COLS = [
@@ -403,6 +603,69 @@ function mkChart(id, type, labels, datasets, extra = {}) {
       ...extra,
     },
   }));
+}
+
+function colorFromPercent(pct) {
+  const alpha = Math.max(0.15, Math.min(0.95, pct / 100));
+  return 'rgba(99,102,241,' + alpha + ')';
+}
+
+function cardTitle(text, helpKey) {
+  const tip = HELP_TEXT[helpKey] || '';
+  return '<h2>' + escHtml(text) + '<button class="help-tip" type="button" aria-label="Help" data-help="' + escHtml(tip) + '">?</button></h2>';
+}
+
+function renderHelpGlossary() {
+  const rows = [
+    ['Filtered Match', 'Row filtered because description/title did not match search intent strongly enough.'],
+    ['Filtered Seniority', 'Row removed because seniority signal did not match target level filters.'],
+    ['RAG Score', 'Numeric relevance score used alongside Green/Amber/Red rating for triage.'],
+    ['Control Limits', 'Statistical upper/lower bounds for normal notified variation within selected CSV slices.'],
+    ['Source Reliability', 'Share of rows from a source that are not errors inside this selected CSV.'],
+  ];
+  return '<div class="help-glossary"><h2>Dashboard glossary</h2><div class="help-grid">' +
+    rows.map(([k, v]) => '<div class="help-item"><strong>' + escHtml(k) + '</strong>' + escHtml(v) + '</div>').join('') +
+  '</div></div>';
+}
+
+function initHelpTips() {
+  let tooltip = document.getElementById('helpTooltip');
+  if (!tooltip) {
+    tooltip = document.createElement('div');
+    tooltip.id = 'helpTooltip';
+    tooltip.style.position = 'fixed';
+    tooltip.style.zIndex = '9999';
+    tooltip.style.maxWidth = '320px';
+    tooltip.style.padding = '.55rem .65rem';
+    tooltip.style.background = '#0f172a';
+    tooltip.style.border = '1px solid #334155';
+    tooltip.style.borderRadius = '8px';
+    tooltip.style.color = '#cbd5e1';
+    tooltip.style.fontSize = '.75rem';
+    tooltip.style.lineHeight = '1.4';
+    tooltip.style.display = 'none';
+    document.body.appendChild(tooltip);
+  }
+  const show = (el) => {
+    const tip = el.getAttribute('data-help');
+    if (!tip) return;
+    tooltip.textContent = tip;
+    const rect = el.getBoundingClientRect();
+    tooltip.style.left = Math.min(window.innerWidth - 340, rect.left + 20) + 'px';
+    tooltip.style.top = Math.max(8, rect.bottom + 8) + 'px';
+    tooltip.style.display = 'block';
+  };
+  const hide = () => { tooltip.style.display = 'none'; };
+  document.querySelectorAll('.help-tip').forEach(btn => {
+    btn.addEventListener('mouseenter', () => show(btn));
+    btn.addEventListener('focus', () => show(btn));
+    btn.addEventListener('mouseleave', hide);
+    btn.addEventListener('blur', hide);
+    btn.addEventListener('click', () => {
+      if (tooltip.style.display === 'block') hide();
+      else show(btn);
+    });
+  });
 }
 
 // ── Table state ───────────────────────────────────────────────────────────────
@@ -599,6 +862,9 @@ function render(data) {
   destroyCharts();
   tableRows = data.rows || [];
   sortCol = null; sortDir = 'asc'; colFilters = {}; globalQ = ''; page = 1;
+  const analytics = data.analytics || {};
+  const sequence = analytics.sequence || { labels: [], fetched: [], notified: [], filtered: [], cumulativeFetched: [], cumulativeNotified: [], cumulativeFiltered: [], control: { mean: 0, ucl: 0, lcl: 0 } };
+  const selectedFile = document.getElementById('fileSelect')?.value || 'selected csv';
 
   const main = document.getElementById('main');
   main.innerHTML = \`
@@ -610,13 +876,49 @@ function render(data) {
       <div class="kpi purple"><div class="val">\${data.salaryCount}</div><div class="lbl">With salary</div></div>
     </div>
     <div class="charts-grid">
-      <div class="card"><h2>Outcome breakdown</h2>      <div class="chart-wrap"><canvas id="cOutcome"></canvas></div></div>
-      <div class="card"><h2>RAG rating (rated jobs)</h2><div class="chart-wrap"><canvas id="cRag"></canvas></div></div>
-      <div class="card"><h2>Jobs by source</h2>         <div class="chart-wrap tall"><canvas id="cSource"></canvas></div></div>
-      <div class="card"><h2>Jobs by search</h2>         <div class="chart-wrap tall"><canvas id="cSearch"></canvas></div></div>
-      <div class="card"><h2>Salary range</h2>           <div class="chart-wrap"><canvas id="cSalary"></canvas></div></div>
-      <div class="card" id="contractCard"><h2>Contract rates</h2><div id="contractStats"></div></div>
+      <div class="card">\${cardTitle('Outcome breakdown', 'outcome')}<div class="chart-wrap"><canvas id="cOutcome"></canvas></div></div>
+      <div class="card">\${cardTitle('RAG rating (rated jobs)', 'rag')}<div class="chart-wrap"><canvas id="cRag"></canvas></div></div>
+      <div class="card">\${cardTitle('Jobs by source', 'source')}<div class="chart-wrap tall"><canvas id="cSource"></canvas></div></div>
+      <div class="card">\${cardTitle('Jobs by search', 'search')}<div class="chart-wrap tall"><canvas id="cSearch"></canvas></div></div>
+      <div class="card">\${cardTitle('Salary range', 'salary')}<div class="chart-wrap"><canvas id="cSalary"></canvas></div></div>
+      <div class="card" id="contractCard">\${cardTitle('Contract rates', 'salary')}<div id="contractStats"></div></div>
+      <div class="card">\${cardTitle('Source quality funnel', 'sourceQuality')}<div class="chart-wrap tall"><canvas id="cSourceQuality"></canvas></div></div>
+      <div class="card">\${cardTitle('Outcomes over sequence', 'outcomesOverTime')}<div class="chart-wrap tall"><canvas id="cOutcomeTime"></canvas></div></div>
+      <div class="card">\${cardTitle('Filter pareto', 'pareto')}<div class="chart-wrap tall"><canvas id="cPareto"></canvas></div></div>
+      <div class="card">\${cardTitle('Search effectiveness heatmap', 'searchHeatmap')}<div class="chart-wrap xtall"><canvas id="cSearchHeat"></canvas></div></div>
+      <div class="card">\${cardTitle('Source reliability snapshot', 'reliability')}<div class="chart-wrap"><canvas id="cReliability"></canvas></div></div>
+      <div class="card">\${cardTitle('SPC control view (notified)', 'control')}<div class="chart-wrap"><canvas id="cControl"></canvas></div></div>
+      <div class="card">\${cardTitle('Run throughput view', 'throughput')}<div class="chart-wrap"><canvas id="cThroughput"></canvas></div></div>
+      <div class="card">\${cardTitle('Schedule heatmap', 'schedule')}<div class="chart-wrap xtall"><canvas id="cSchedule"></canvas></div></div>
+      <div class="card">\${cardTitle('Relevance vs outcome scatter', 'scatter')}<div class="chart-wrap"><canvas id="cScatter"></canvas></div></div>
     </div>
+    <div class="diagram-card">
+      <div class="diagram-header">
+        <span class="diagram-title">Pipeline + data model (selected csv)</span>
+        <span class="scope-badge">Scope: \${escHtml(selectedFile)}</span>
+      </div>
+      <div class="diagram-grid">
+        <div class="diagram-box">
+          <h2>\${cardTitle('How pipeline works', 'pipeline').replace('<h2>','').replace('</h2>','')}</h2>
+          <div class="diagram-flow">
+            <div class="flow-step">Source adapters</div>
+            <div class="flow-step">Normalize fields</div>
+            <div class="flow-step">Dedup in SQLite</div>
+            <div class="flow-step">Seniority + relevance filters</div>
+            <div class="flow-step">Discord notify + CSV row logging</div>
+          </div>
+        </div>
+        <div class="diagram-box">
+          <h2>\${cardTitle('CSV schema and derived metrics', 'schema').replace('<h2>','').replace('</h2>','')}</h2>
+          <div class="schema-row">
+            <div class="schema-node">CSV row fields<br/><small>source, search, outcome, rag, salary, posted_at</small></div>
+            <div class="schema-join">→</div>
+            <div class="schema-node">Derived panels<br/><small>funnel, pareto, heatmaps, control view, scatter</small></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    \${renderHelpGlossary()}
     \${buildTableHTML(tableRows)}
   \`;
 
@@ -665,6 +967,91 @@ function render(data) {
     backgroundColor: '#6366f1', borderRadius: 4,
   }], { plugins: { legend: { display: false } } });
 
+  const sq = analytics.sourceQuality || [];
+  mkChart('cSourceQuality', 'bar', sq.map(s => s.source), [
+    { label: 'Fetched', data: sq.map(s => s.fetched), backgroundColor: '#334155' },
+    { label: 'Passed', data: sq.map(s => s.passed), backgroundColor: '#22d3ee' },
+    { label: 'Notified', data: sq.map(s => s.notified), backgroundColor: '#4ade80' },
+  ], { scales: { x: { stacked: true, ticks: { color: '#94a3b8', font: { size: 10 }, autoSkip: false } }, y: { stacked: true, ticks: { color: '#94a3b8' } } } });
+
+  mkChart('cOutcomeTime', 'bar', sequence.labels, [
+    { label: 'Notified', data: sequence.notified, backgroundColor: '#4ade80' },
+    { label: 'Filtered', data: sequence.filtered, backgroundColor: '#f87171' },
+    { label: 'Fetched', data: sequence.fetched, backgroundColor: '#60a5fa' },
+  ], { scales: { x: { stacked: true, ticks: { color: '#94a3b8', maxRotation: 0, autoSkip: true, maxTicksLimit: 8 } }, y: { stacked: true, ticks: { color: '#94a3b8' } } } });
+
+  const pareto = analytics.pareto || [];
+  mkChart('cPareto', 'bar', pareto.map(p => p.label.replace('filtered_', '')), [
+    { label: 'Count', data: pareto.map(p => p.value), backgroundColor: '#f59e0b', yAxisID: 'y' },
+    { label: 'Cumulative %', data: pareto.map(p => p.cumulativePct), type: 'line', borderColor: '#a78bfa', backgroundColor: '#a78bfa', yAxisID: 'y1', tension: .2 },
+  ], { scales: { y: { ticks: { color: '#94a3b8' } }, y1: { position: 'right', min: 0, max: 100, ticks: { color: '#a78bfa', callback: v => v + '%' }, grid: { drawOnChartArea: false } } } });
+
+  const searchEff = (analytics.searchEffectiveness || []).slice(0, 14);
+  const heatOutcomes = ['notified', 'already_seen', 'filtered_match', 'filtered_seniority', 'filtered_salary', 'filtered_relevance', 'error'];
+  const searchHeatData = [];
+  searchEff.forEach((s, yi) => {
+    heatOutcomes.forEach((o, xi) => {
+      const pct = ((s.byOutcome[o] || 0) / Math.max(1, s.total)) * 100;
+      searchHeatData.push({ x: xi, y: yi, r: 8, pct, label: s.search, outcome: o });
+    });
+  });
+  mkChart('cSearchHeat', 'bubble', [], [{ label: 'Outcome %', data: searchHeatData, backgroundColor: searchHeatData.map(p => colorFromPercent(p.pct)) }], {
+    parsing: false,
+    plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ctx.raw.label + ' · ' + ctx.raw.outcome + ': ' + ctx.raw.pct.toFixed(1) + '%' } } },
+    scales: {
+      x: { type: 'linear', min: -0.5, max: heatOutcomes.length - 0.5, ticks: { stepSize: 1, color: '#94a3b8', callback: v => heatOutcomes[v] || '' } },
+      y: { type: 'linear', min: -0.5, max: Math.max(0, searchEff.length - 0.5), ticks: { stepSize: 1, color: '#94a3b8', callback: v => (searchEff[v]?.search || '').slice(0, 18) } },
+    },
+  });
+
+  mkChart('cReliability', 'bar', sq.map(s => s.source), [{
+    label: 'Reliability %', data: sq.map(s => s.reliability), backgroundColor: sq.map(s => colorFromPercent(s.reliability)),
+  }], { plugins: { legend: { display: false } }, scales: { y: { min: 0, max: 100, ticks: { color: '#94a3b8', callback: v => v + '%' } }, x: { ticks: { color: '#94a3b8' } } } });
+
+  mkChart('cControl', 'line', sequence.labels, [
+    { label: 'Notified', data: sequence.notified, borderColor: '#4ade80', backgroundColor: '#4ade80', tension: .25 },
+    { label: 'Mean', data: sequence.labels.map(() => sequence.control.mean), borderColor: '#94a3b8', borderDash: [6, 4], pointRadius: 0 },
+    { label: 'UCL', data: sequence.labels.map(() => sequence.control.ucl), borderColor: '#f59e0b', borderDash: [4, 4], pointRadius: 0 },
+    { label: 'LCL', data: sequence.labels.map(() => sequence.control.lcl), borderColor: '#fb7185', borderDash: [4, 4], pointRadius: 0 },
+  ], { scales: { x: { ticks: { color: '#94a3b8', maxRotation: 0, autoSkip: true, maxTicksLimit: 8 } }, y: { ticks: { color: '#94a3b8' } } } });
+
+  mkChart('cThroughput', 'line', sequence.labels, [
+    { label: 'Fetched cumulative', data: sequence.cumulativeFetched, borderColor: '#60a5fa', backgroundColor: '#60a5fa', tension: .2 },
+    { label: 'Notified cumulative', data: sequence.cumulativeNotified, borderColor: '#4ade80', backgroundColor: '#4ade80', tension: .2 },
+    { label: 'Filtered cumulative', data: sequence.cumulativeFiltered, borderColor: '#f87171', backgroundColor: '#f87171', tension: .2 },
+  ], { scales: { x: { ticks: { color: '#94a3b8', maxRotation: 0, autoSkip: true, maxTicksLimit: 8 } }, y: { ticks: { color: '#94a3b8' } } } });
+
+  const scheduleData = [];
+  const scheduleMatrix = analytics.schedule || [];
+  for (let d = 0; d < 7; d++) {
+    for (let h = 0; h < 24; h++) {
+      const cnt = scheduleMatrix[d]?.[h] || 0;
+      if (!cnt) continue;
+      scheduleData.push({ x: h, y: d, r: Math.min(12, 4 + cnt), cnt });
+    }
+  }
+  mkChart('cSchedule', 'bubble', [], [{ label: 'Jobs', data: scheduleData, backgroundColor: scheduleData.map(p => colorFromPercent(Math.min(100, p.cnt * 15))) }], {
+    parsing: false,
+    plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => DOW_LABELS[ctx.raw.y] + ' ' + String(ctx.raw.x).padStart(2, '0') + ':00 · ' + ctx.raw.cnt + ' jobs' } } },
+    scales: {
+      x: { type: 'linear', min: -0.5, max: 23.5, ticks: { color: '#94a3b8', stepSize: 2 } },
+      y: { type: 'linear', min: -0.5, max: 6.5, ticks: { color: '#94a3b8', stepSize: 1, callback: v => DOW_LABELS[v] || '' } },
+    },
+  });
+
+  const scatter = analytics.ragScatter || [];
+  mkChart('cScatter', 'scatter', [], [{
+    label: 'RAG score', data: scatter, parsing: false,
+    backgroundColor: scatter.map(p => OUTCOME_COLORS[p.outcome] || '#94a3b8'),
+    pointRadius: 4,
+  }], {
+    plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => 'Row ' + ctx.raw.x + ' · score ' + ctx.raw.y + ' · ' + (ctx.raw.outcome || 'unknown') } } },
+    scales: {
+      x: { type: 'linear', ticks: { color: '#94a3b8' }, title: { display: true, text: 'Row order', color: '#64748b' } },
+      y: { type: 'linear', ticks: { color: '#94a3b8' }, title: { display: true, text: 'RAG score', color: '#64748b' } },
+    },
+  });
+
   // contract rates card
   const cr = data.contractRates || { day: [], hour: [] };
   const fmtK = v => '£' + Math.round(v / 1000) + 'k';
@@ -699,6 +1086,7 @@ function render(data) {
 
   initTableEvents();
   renderTable();
+  initHelpTips();
 }
 
 // ── Utilities ─────────────────────────────────────────────────────────────────

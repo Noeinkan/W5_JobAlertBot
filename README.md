@@ -156,6 +156,36 @@ npm run check
 npm test
 ```
 
+## Run Dashboard
+
+Start the dashboard server:
+
+```bash
+node src/dashboard.js --port 3099
+```
+
+The dashboard visualizations are scoped to the currently selected CSV file in `logs/runs/`.
+
+New analytics panels include:
+
+- source quality funnel
+- outcomes over sequence (within selected CSV)
+- filter pareto
+- search effectiveness heatmap
+- source reliability snapshot
+- SPC control view (notified)
+- throughput progression
+- schedule heatmap
+- relevance score scatter
+
+Each chart header includes a `?` hover/focus help tip with:
+
+- what the visual shows
+- why it matters
+- how to interpret signals
+
+A glossary panel also explains terms such as `filtered_match`, `RAG`, control limits, and source reliability.
+
 ## Slash Commands
 
 - `/search`: run an immediate search cycle
