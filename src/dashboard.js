@@ -210,12 +210,12 @@ const HTML = /* html */`<!DOCTYPE html>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-body{font-family:system-ui,sans-serif;background:#0f1117;color:#e2e8f0;min-height:100vh}
-header{background:#1a1d27;padding:.8rem 1.5rem;display:flex;align-items:center;gap:1rem;border-bottom:1px solid #2d3148;position:sticky;top:0;z-index:100}
-header h1{font-size:1rem;font-weight:600;color:#a5b4fc;flex:1}
-select{background:#252836;color:#e2e8f0;border:1px solid #3d4268;border-radius:6px;padding:.35rem .7rem;font-size:.85rem;cursor:pointer}
+body{font-family:system-ui,sans-serif;background:#0f1117;color:#e2e8f0;min-height:100vh;overflow-x:hidden}
+header{background:#1a1d27;padding:.8rem 1.25rem;display:flex;align-items:center;gap:.75rem;border-bottom:1px solid #2d3148;position:sticky;top:0;z-index:100;flex-wrap:wrap}
+header h1{font-size:1rem;font-weight:600;color:#a5b4fc;flex:1;min-width:220px}
+select{background:#252836;color:#e2e8f0;border:1px solid #3d4268;border-radius:6px;padding:.35rem .7rem;font-size:.85rem;cursor:pointer;max-width:min(100%,420px);min-width:210px}
 select:focus{outline:2px solid #6366f1}
-#meta{font-size:.78rem;color:#64748b;white-space:nowrap}
+#meta{font-size:.78rem;color:#64748b;white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis}
 main{padding:1.25rem;display:grid;gap:1.25rem}
 .kpi-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:1rem}
 .kpi{background:#1a1d27;border:1px solid #2d3148;border-radius:10px;padding:.9rem 1.1rem}
@@ -226,8 +226,9 @@ main{padding:1.25rem;display:grid;gap:1.25rem}
 .kpi.red    .val{color:#f87171}
 .kpi.blue   .val{color:#60a5fa}
 .kpi.purple .val{color:#a78bfa}
-.charts-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:1.25rem}
+.charts-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr));gap:1.25rem}
 .card{background:#1a1d27;border:1px solid #2d3148;border-radius:10px;padding:1.1rem}
+.card,.kpi,.table-card{min-width:0}
 .card h2{font-size:.78rem;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:.06em;margin-bottom:.9rem}
 .chart-wrap{position:relative;height:210px}
 .chart-wrap.tall{height:270px}
@@ -297,6 +298,7 @@ tbody td a:hover{text-decoration:underline}
 .run-btn:disabled{opacity:.5;cursor:default}
 .run-btn.stop{background:#dc2626}
 .run-btn.stop:hover:not(:disabled){background:#b91c1c}
+#headerButtons{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap}
 #botStateBadge{font-size:.75rem;padding:.2rem .55rem;border-radius:4px;font-weight:600;white-space:nowrap}
 #botStateBadge.idle   {background:#1e2235;color:#64748b}
 #botStateBadge.running{background:#0c2a3b;color:#38bdf8;animation:pulse 1.4s ease-in-out infinite}
@@ -304,6 +306,28 @@ tbody td a:hover{text-decoration:underline}
 #botStateBadge.error  {background:#3b1111;color:#f87171}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.55}}
 #logPanel{background:#0b0d12;border-bottom:1px solid #2d3148;padding:.6rem 1.25rem;font-family:monospace;font-size:.73rem;color:#94a3b8;max-height:200px;overflow-y:auto;white-space:pre-wrap;word-break:break-all;display:none}
+@media (max-width: 1100px){
+  header{padding:.7rem 1rem}
+  header h1{flex-basis:100%;min-width:0}
+  #meta{order:4;flex:1 1 100%;white-space:normal;overflow:visible;text-overflow:clip}
+}
+@media (max-width: 860px){
+  main{padding:1rem;gap:1rem}
+  .charts-grid{grid-template-columns:1fr}
+  .chart-wrap{height:230px}
+  .chart-wrap.tall{height:260px}
+  .table-toolbar h2{flex-basis:100%}
+  #globalSearch{width:100%;max-width:none}
+}
+@media (max-width: 640px){
+  header{gap:.55rem}
+  select{min-width:0;flex:1 1 100%}
+  #headerButtons{flex:1 1 100%}
+  #headerButtons .run-btn{flex:1 1 calc(50% - .5rem);text-align:center}
+  .kpi-row{grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:.75rem}
+  .kpi .val{font-size:1.55rem}
+  .table-wrap{max-width:100%}
+}
 </style>
 </head>
 <body>
@@ -312,9 +336,11 @@ tbody td a:hover{text-decoration:underline}
   <select id="fileSelect"></select>
   <span id="meta"></span>
   <span id="botStateBadge" class="idle">idle</span>
-  <button id="runOnceBtn" class="run-btn" title="Run one fetch cycle now">▶ Run Once</button>
-  <button id="startBotBtn" class="run-btn" title="Start the bot scheduler (npm start)">▶ Start Bot</button>
-  <button id="stopBotBtn"  class="run-btn stop" title="Stop the running process" style="display:none">■ Stop</button>
+  <div id="headerButtons">
+    <button id="runOnceBtn" class="run-btn" title="Run one fetch cycle now">▶ Run Once</button>
+    <button id="startBotBtn" class="run-btn" title="Start the bot scheduler (npm start)">▶ Start Bot</button>
+    <button id="stopBotBtn"  class="run-btn stop" title="Stop the running process" style="display:none">■ Stop</button>
+  </div>
 </header>
 <div id="logPanel"></div>
 <main id="main">
