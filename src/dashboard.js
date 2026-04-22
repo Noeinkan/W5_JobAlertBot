@@ -13,9 +13,15 @@ const RUNS_DIR = path.join(__dirname, '..', 'logs', 'runs');
 
 const portArg = process.argv.indexOf('--port');
 const PORT = portArg !== -1 ? parseInt(process.argv[portArg + 1], 10) : 3099;
-const HOST      = process.env.DASHBOARD_HOST      || '0.0.0.0';
-const TOKEN     = process.env.DASHBOARD_TOKEN     || '';  // optional bearer token
+const HOST      = process.env.DASHBOARD_HOST      || '127.0.0.1';
+const TOKEN     = process.env.DASHBOARD_TOKEN     || '';  // bearer token; required when bound to a non-loopback host
 const BASE_PATH = (process.env.DASHBOARD_BASE_PATH || '').replace(/\/$/, ''); // e.g. '/job_dashboard'
+
+const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '::1', '0:0:0:0:0:0:0:1']);
+if (!LOOPBACK_HOSTS.has(HOST) && !TOKEN) {
+  console.error(`Refusing to bind dashboard to ${HOST} without DASHBOARD_TOKEN. Set a token or keep DASHBOARD_HOST on loopback.`);
+  process.exit(1);
+}
 
 // ── Bot process state ─────────────────────────────────────────────────────────
 let botProc   = null;
@@ -89,6 +95,29 @@ function listCsvFiles() {
     .filter(f => f.endsWith('.csv'))
     .sort()
     .reverse();
+}
+
+// Cache aggregated data per CSV, keyed by filename + mtime so stale entries are
+// invalidated automatically when a run rewrites a file (and LRU-capped so long
+// dashboard sessions don't grow unbounded).
+const AGG_CACHE_LIMIT = 50;
+const aggregateCache = new Map();
+function getAggregate(filePath, filename) {
+  const stat = fs.statSync(filePath);
+  const cached = aggregateCache.get(filename);
+  if (cached && cached.mtimeMs === stat.mtimeMs) {
+    aggregateCache.delete(filename);
+    aggregateCache.set(filename, cached);
+    return cached.data;
+  }
+  const raw = fs.readFileSync(filePath, 'utf8');
+  const data = aggregate(parseCsv(raw));
+  aggregateCache.set(filename, { mtimeMs: stat.mtimeMs, data });
+  if (aggregateCache.size > AGG_CACHE_LIMIT) {
+    const oldest = aggregateCache.keys().next().value;
+    aggregateCache.delete(oldest);
+  }
+  return data;
 }
 
 // ── Contract rate detection + yearly equivalent ───────────────────────────────
@@ -177,18 +206,23 @@ function aggregate(rows) {
   }
 
   const salaryBuckets = { '<30k': 0, '30-50k': 0, '50-70k': 0, '70-100k': 0, '>100k': 0 };
-  for (const v of salaryVals) {
+  const bucketOf = v => {
     const k = v / 1000;
-    if      (k < 30)  salaryBuckets['<30k']++;
-    else if (k < 50)  salaryBuckets['30-50k']++;
-    else if (k < 70)  salaryBuckets['50-70k']++;
-    else if (k < 100) salaryBuckets['70-100k']++;
-    else              salaryBuckets['>100k']++;
+    if      (k < 30)  return '<30k';
+    else if (k < 50)  return '30-50k';
+    else if (k < 70)  return '50-70k';
+    else if (k < 100) return '70-100k';
+    else              return '>100k';
+  };
+  for (const v of salaryVals) salaryBuckets[bucketOf(v)]++;
+  for (const r of rows) {
+    const n = Number(r.salary_min);
+    r.salaryBucket = (n && n > 0) ? bucketOf(n) : '';
   }
 
   return {
     total:       rows.length,
-    notified:    rows.filter(r => r.outcome === 'notified').length,
+    notified:    rows.filter(r => r.outcome === 'new').length,
     alreadySeen: rows.filter(r => r.outcome === 'already_seen').length,
     filtered:    rows.filter(r => r.outcome?.startsWith('filtered')).length,
     salaryCount: salaryVals.length,
@@ -279,7 +313,7 @@ function deriveAnalytics(rows, byOutcome) {
     sourceMap[source].fetched++;
     searchMap[search].total++;
     searchMap[search].byOutcome[r.outcome || 'unknown'] = (searchMap[search].byOutcome[r.outcome || 'unknown'] || 0) + 1;
-    if (r.outcome === 'notified') {
+    if (r.outcome === 'new') {
       sourceMap[source].notified++;
       searchMap[search].notified++;
     }
@@ -314,7 +348,7 @@ function deriveAnalytics(rows, byOutcome) {
   const sequence = buildSequenceBuckets(rows, Math.min(12, Math.max(6, Math.ceil(rows.length / 12) || 6)));
   const seqMetrics = sequence.buckets.map(bucket => {
     const fetched = bucket.length;
-    const notified = bucket.filter(r => r.outcome === 'notified').length;
+    const notified = bucket.filter(r => r.outcome === 'new').length;
     const filtered = bucket.filter(r => (r.outcome || '').startsWith('filtered_')).length;
     return { fetched, notified, filtered };
   });
@@ -373,8 +407,36 @@ header h1{font-size:1rem;font-weight:600;color:#a5b4fc;flex:1;min-width:220px}
 select{background:#252836;color:#e2e8f0;border:1px solid #3d4268;border-radius:6px;padding:.35rem .7rem;font-size:.85rem;cursor:pointer;max-width:min(100%,420px);min-width:210px}
 select:focus{outline:2px solid #6366f1}
 #meta{font-size:.78rem;color:#64748b;white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis}
-main{padding:1.25rem;display:grid;gap:1.25rem}
-.kpi-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:1rem}
+main{padding:1rem 1.25rem 1.5rem;display:grid;gap:.85rem}
+
+/* ── Cross-filter bar ── */
+.filter-bar{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;background:#161a29;border:1px solid #222741;border-radius:8px;padding:.45rem .65rem;position:sticky;top:52px;z-index:90;box-shadow:0 2px 8px rgba(0,0,0,.35)}
+.filter-bar.empty{display:none}
+.filter-bar-label{font-size:.72rem;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;font-weight:600}
+.filter-chip{display:inline-flex;align-items:center;gap:.35rem;background:#1e2235;border:1px solid #3d4268;color:#c7d2fe;border-radius:999px;padding:.2rem .55rem .2rem .7rem;font-size:.75rem;cursor:pointer;transition:background .15s}
+.filter-chip:hover{background:#2f3552}
+.filter-chip b{font-weight:600;color:#a5b4fc}
+.filter-chip .x{display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;border-radius:50%;background:#3d4268;color:#fff;font-size:.65rem;line-height:1}
+.filter-chip:hover .x{background:#6366f1}
+.filter-clear-all{margin-left:auto;background:transparent;border:none;color:#94a3b8;font-size:.75rem;cursor:pointer;text-decoration:underline}
+.filter-clear-all:hover{color:#f87171}
+
+/* ── Collapsible sections ── */
+.section{background:#14171f;border:1px solid #222741;border-radius:10px;overflow:hidden}
+.section-header{display:flex;align-items:center;gap:.6rem;padding:.65rem .9rem;background:#181b25;border-bottom:1px solid #222741;cursor:pointer;user-select:none}
+.section.open .section-header{border-bottom-color:#2d3148}
+.section:not(.open) .section-header{border-bottom:none}
+.section-header:hover{background:#1c2030}
+.section-header .chev{display:inline-block;transition:transform .2s;color:#a5b4fc;font-size:.75rem;width:14px}
+.section.open .section-header .chev{transform:rotate(90deg)}
+.section-header h2{font-size:.82rem;font-weight:600;color:#e2e8f0;letter-spacing:.02em;text-transform:none;margin:0}
+.section-header .section-meta{font-size:.72rem;color:#64748b;margin-left:auto}
+.section-header .section-pin{display:inline-flex;align-items:center;gap:.25rem;font-size:.68rem;color:#64748b;background:#0f1220;border:1px solid #222741;padding:.1rem .4rem;border-radius:4px}
+.section-body{padding:.9rem;display:none}
+.section.open .section-body{display:block}
+.section-body>.charts-grid{gap:.85rem}
+
+.kpi-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:.75rem}
 .kpi{background:#1a1d27;border:1px solid #2d3148;border-radius:10px;padding:.9rem 1.1rem}
 .kpi .val{font-size:1.9rem;font-weight:700;line-height:1}
 .kpi .lbl{font-size:.72rem;color:#94a3b8;margin-top:.3rem;text-transform:uppercase;letter-spacing:.05em}
@@ -391,9 +453,16 @@ main{padding:1.25rem;display:grid;gap:1.25rem}
 .help-tip:focus{outline:2px solid #6366f1}
 .help-tip:hover,.help-tip:focus{background:#2f3552;color:#c7d2fe}
 .scope-badge{display:inline-flex;align-items:center;padding:.2rem .5rem;border-radius:999px;background:#1e2235;border:1px solid #2d3148;color:#93c5fd;font-size:.7rem;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.chart-wrap{position:relative;height:210px}
-.chart-wrap.tall{height:270px}
-.chart-wrap.xtall{height:320px}
+.chart-wrap{position:relative;height:180px}
+.chart-wrap.tall{height:230px}
+.chart-wrap.xtall{height:280px}
+.card.filter-active{box-shadow:0 0 0 1px #6366f1 inset}
+.card canvas{cursor:pointer}
+.kpi{cursor:pointer;transition:border-color .15s}
+.kpi:hover{border-color:#6366f1}
+.kpi.filter-active{border-color:#6366f1;box-shadow:0 0 0 1px #6366f1 inset}
+.kpi.static{cursor:default}
+.kpi.static:hover{border-color:#2d3148}
 .help-glossary{background:#1a1d27;border:1px solid #2d3148;border-radius:10px;padding:1.1rem}
 .help-glossary h2{font-size:.78rem;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:.06em;margin-bottom:.7rem}
 .help-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:.75rem}
@@ -422,7 +491,7 @@ main{padding:1.25rem;display:grid;gap:1.25rem}
 .btn{background:#252836;color:#94a3b8;border:1px solid #3d4268;border-radius:6px;padding:.3rem .65rem;font-size:.8rem;cursor:pointer;transition:background .15s}
 .btn:hover{background:#2d3148;color:#e2e8f0}
 .btn.active{background:#6366f1;color:#fff;border-color:#6366f1}
-.table-wrap{overflow-x:auto;border-radius:6px;border:1px solid #2d3148}
+.table-wrap{overflow:auto;border-radius:6px;border:1px solid #2d3148;max-height:60vh}
 table{width:100%;border-collapse:collapse;font-size:.8rem;min-width:900px}
 thead tr.header-row th{background:#1e2235;color:#94a3b8;font-weight:600;text-transform:uppercase;font-size:.72rem;letter-spacing:.05em;padding:.55rem .7rem;white-space:nowrap;border-bottom:1px solid #2d3148;position:sticky;top:0;z-index:10;user-select:none}
 thead tr.header-row th.sortable{cursor:pointer}
@@ -443,13 +512,12 @@ tbody td.wrap{white-space:normal;word-break:break-word}
 tbody td a{color:#60a5fa;text-decoration:none}
 tbody td a:hover{text-decoration:underline}
 .badge{display:inline-block;padding:.15rem .45rem;border-radius:4px;font-size:.7rem;font-weight:600;white-space:nowrap}
-.badge.notified         {background:#14532d;color:#4ade80}
+.badge.new              {background:#14532d;color:#4ade80}
 .badge.already_seen     {background:#1e3a5f;color:#60a5fa}
 .badge.filtered_seniority{background:#3b1111;color:#f87171}
 .badge.filtered_salary  {background:#3b2e08;color:#fbbf24}
 .badge.filtered_match   {background:#3b1f08;color:#fb923c}
-.badge.filtered_relevance{background:#2e0f3b;color:#e879f9}
-.badge.error            {background:#1e2235;color:#94a3b8}
+.badge.filtered_rag     {background:#2e0f3b;color:#e879f9}
 .badge.rate-day {background:#0c2a3b;color:#38bdf8}
 .badge.rate-hour{background:#1a1040;color:#a78bfa}
 .badge.Green{background:#14532d;color:#4ade80}
@@ -524,6 +592,15 @@ tbody td a:hover{text-decoration:underline}
   </div>
 </header>
 <div id="logPanel"></div>
+<section id="trendSection" style="padding:1.25rem 1.25rem 0;display:none">
+  <div class="card">
+    <h2 style="font-size:.78rem;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:.06em;margin-bottom:.9rem;display:flex;align-items:center;gap:.45rem">
+      Notify rate — recent runs
+      <span class="help-tip" data-help="What: Notify rate (% of fetched rows that got through all filters) across the most recent runs, with a trailing 7-run mean baseline. Why: Tell today's run from the baseline at a glance. Read: Flat or rising is healthy; a dip below the baseline means source or filter drift.">?</span>
+    </h2>
+    <div class="chart-wrap tall"><canvas id="cTrend"></canvas></div>
+  </div>
+</section>
 <main id="main">
   <div id="loading">Loading…</div>
 </main>
@@ -532,13 +609,12 @@ tbody td a:hover{text-decoration:underline}
 const API_BASE = '${BASE_PATH}';
 // ── Constants ─────────────────────────────────────────────────────────────────
 const OUTCOME_COLORS = {
-  notified:           '#4ade80',
+  new:                '#4ade80',
   already_seen:       '#60a5fa',
   filtered_seniority: '#f87171',
   filtered_salary:    '#fbbf24',
   filtered_match:     '#fb923c',
-  filtered_relevance: '#e879f9',
-  error:              '#94a3b8',
+  filtered_rag:       '#e879f9',
 };
 const RAG_COLORS = { Green: '#4ade80', Amber: '#fbbf24', Red: '#f87171' };
 const PALETTE = ['#6366f1','#22d3ee','#f59e0b','#10b981','#ec4899','#a78bfa','#fb923c','#38bdf8','#84cc16','#e11d48'];
@@ -590,6 +666,7 @@ function destroyCharts() { charts.forEach(c => c.destroy()); charts = []; }
 function mkChart(id, type, labels, datasets, extra = {}) {
   const ctx = document.getElementById(id);
   if (!ctx) return;
+  const { onPick, ...rest } = extra;
   charts.push(new Chart(ctx, {
     type,
     data: { labels, datasets },
@@ -600,7 +677,15 @@ function mkChart(id, type, labels, datasets, extra = {}) {
         x: { ticks: { color: '#94a3b8', font: { size: 11 } }, grid: { color: '#1e2235' } },
         y: { ticks: { color: '#94a3b8', font: { size: 11 } }, grid: { color: '#1e2235' } },
       } : {},
-      ...extra,
+      onClick: onPick ? (evt, active, chart) => {
+        if (!active || !active.length) return;
+        const el = active[0];
+        const label = chart.data.labels?.[el.index];
+        const dataset = chart.data.datasets?.[el.datasetIndex];
+        const raw = dataset?.data?.[el.index];
+        onPick({ label, datasetLabel: dataset?.label, raw, index: el.index, datasetIndex: el.datasetIndex, chart });
+      } : undefined,
+      ...rest,
     },
   }));
 }
@@ -668,6 +753,132 @@ function initHelpTips() {
   });
 }
 
+// ── Cross-filter state (PowerBI-style chart → table) ─────────────────────────
+const CROSS_FILTER_LABELS = {
+  outcome: 'Outcome',
+  rag_rating: 'RAG',
+  source: 'Source',
+  search_name: 'Search',
+  salaryBucket: 'Salary band',
+  rateType: 'Rate type',
+  is_contract: 'Contract',
+};
+let crossFilters = {}; // { key: Set<string> }
+
+function toggleCrossFilter(key, value) {
+  if (value == null || value === '') return;
+  const set = crossFilters[key] || new Set();
+  if (set.has(value)) set.delete(value); else set.add(value);
+  if (set.size) crossFilters[key] = set; else delete crossFilters[key];
+  syncCrossFilterUI();
+}
+
+function clearCrossFilters() {
+  crossFilters = {};
+  syncCrossFilterUI();
+}
+
+function hasCrossFilters() {
+  return Object.keys(crossFilters).length > 0;
+}
+
+function syncCrossFilterUI() {
+  renderFilterBar();
+  renderTable();
+  updateKpisFromVisible();
+  markActiveCards();
+}
+
+function renderFilterBar() {
+  const bar = document.getElementById('filterBar');
+  if (!bar) return;
+  const entries = Object.entries(crossFilters);
+  if (!entries.length) { bar.className = 'filter-bar empty'; bar.innerHTML = ''; return; }
+  bar.className = 'filter-bar';
+  const chips = entries.flatMap(([key, set]) =>
+    [...set].map(v => {
+      return '<span class="filter-chip" data-key="' + escHtml(key) + '" data-val="' + escHtml(v) + '" title="Remove this filter">'
+        + '<b>' + escHtml(CROSS_FILTER_LABELS[key] || key) + ':</b> ' + escHtml(v)
+        + '<span class="x">×</span></span>';
+    })
+  ).join('');
+  bar.innerHTML = '<span class="filter-bar-label">Active filters</span>' + chips
+    + '<button class="filter-clear-all" id="filterClearAll">Clear all</button>';
+  bar.querySelectorAll('.filter-chip').forEach(el => {
+    el.addEventListener('click', () => toggleCrossFilter(el.dataset.key, el.dataset.val));
+  });
+  const clearBtn = bar.querySelector('#filterClearAll');
+  if (clearBtn) clearBtn.addEventListener('click', clearCrossFilters);
+}
+
+function markActiveCards() {
+  document.querySelectorAll('.card[data-filter-key]').forEach(card => {
+    const k = card.dataset.filterKey;
+    card.classList.toggle('filter-active', !!crossFilters[k]);
+  });
+  document.querySelectorAll('.kpi[data-kpi-outcome]').forEach(el => {
+    const v = el.dataset.kpiOutcome;
+    const on = crossFilters.outcome && crossFilters.outcome.has(v);
+    el.classList.toggle('filter-active', !!on);
+  });
+  const kpiFiltered = document.querySelector('.kpi[data-kpi="filtered"]');
+  if (kpiFiltered) {
+    const s = crossFilters.outcome;
+    const on = !!s && s.size > 0 && [...s].every(v => v.startsWith('filtered'));
+    kpiFiltered.classList.toggle('filter-active', on);
+  }
+}
+
+function rowsPassingCross(rows) {
+  if (!hasCrossFilters()) return rows;
+  return rows.filter(r => {
+    for (const [k, set] of Object.entries(crossFilters)) {
+      const rv = r[k] || '';
+      if (!set.has(rv)) return false;
+    }
+    return true;
+  });
+}
+
+function updateKpisFromVisible() {
+  const rows = rowsPassingCross(tableRows);
+  const $ = id => document.getElementById(id);
+  const total    = rows.length;
+  const notified = rows.filter(r => r.outcome === 'new').length;
+  const seen     = rows.filter(r => r.outcome === 'already_seen').length;
+  const filtered = rows.filter(r => (r.outcome || '').startsWith('filtered')).length;
+  const salCount = rows.filter(r => Number(r.salary_min) > 0).length;
+  if ($('kpiTotal'))    $('kpiTotal').textContent    = total;
+  if ($('kpiNotified')) $('kpiNotified').textContent = notified;
+  if ($('kpiSeen'))     $('kpiSeen').textContent     = seen;
+  if ($('kpiFiltered')) $('kpiFiltered').textContent = filtered;
+  if ($('kpiSalary'))   $('kpiSalary').textContent   = salCount;
+}
+
+// ── Collapsible section persistence ──────────────────────────────────────────
+const SECTION_STORAGE_KEY = 'dashSectionsOpen';
+function loadSectionState() {
+  try { return JSON.parse(localStorage.getItem(SECTION_STORAGE_KEY) || '{}'); } catch { return {}; }
+}
+function saveSectionState(state) {
+  try { localStorage.setItem(SECTION_STORAGE_KEY, JSON.stringify(state)); } catch {}
+}
+function initSectionToggles() {
+  const state = loadSectionState();
+  document.querySelectorAll('.section').forEach(section => {
+    const id = section.dataset.section;
+    if (id && id in state) section.classList.toggle('open', !!state[id]);
+    const header = section.querySelector('.section-header');
+    if (!header) return;
+    header.addEventListener('click', () => {
+      section.classList.toggle('open');
+      const s = loadSectionState();
+      s[id] = section.classList.contains('open');
+      saveSectionState(s);
+    });
+  });
+}
+
 // ── Table state ───────────────────────────────────────────────────────────────
 let tableRows  = [];
 let sortCol    = null;
@@ -676,7 +887,7 @@ let colFilters = {};      // { colKey: string }
 let globalQ    = '';
 
 function getVisible() {
-  let rows = tableRows;
+  let rows = rowsPassingCross(tableRows);
 
   // global search
   if (globalQ) {
@@ -862,6 +1073,7 @@ function render(data) {
   destroyCharts();
   tableRows = data.rows || [];
   sortCol = null; sortDir = 'asc'; colFilters = {}; globalQ = ''; page = 1;
+  crossFilters = {};
   const analytics = data.analytics || {};
   const sequence = analytics.sequence || { labels: [], fetched: [], notified: [], filtered: [], cumulativeFetched: [], cumulativeNotified: [], cumulativeFiltered: [], control: { mean: 0, ucl: 0, lcl: 0 } };
   const selectedFile = document.getElementById('fileSelect')?.value || 'selected csv';
@@ -869,57 +1081,113 @@ function render(data) {
   const main = document.getElementById('main');
   main.innerHTML = \`
     <div class="kpi-row">
-      <div class="kpi blue">  <div class="val">\${data.total}      </div><div class="lbl">Total fetched</div></div>
-      <div class="kpi green"> <div class="val">\${data.notified}   </div><div class="lbl">Notified</div></div>
-      <div class="kpi amber"> <div class="val">\${data.alreadySeen}</div><div class="lbl">Already seen</div></div>
-      <div class="kpi red">   <div class="val">\${data.filtered}   </div><div class="lbl">Filtered</div></div>
-      <div class="kpi purple"><div class="val">\${data.salaryCount}</div><div class="lbl">With salary</div></div>
+      <div class="kpi blue static">                                                                       <div class="val" id="kpiTotal">\${data.total}</div>         <div class="lbl">Total fetched</div></div>
+      <div class="kpi green"  data-kpi-outcome="new"          title="Click to filter table by Notified">     <div class="val" id="kpiNotified">\${data.notified}</div>   <div class="lbl">Notified</div></div>
+      <div class="kpi amber"  data-kpi-outcome="already_seen" title="Click to filter table by Already seen"> <div class="val" id="kpiSeen">\${data.alreadySeen}</div>    <div class="lbl">Already seen</div></div>
+      <div class="kpi red"    data-kpi="filtered"             title="Click to filter by any filtered_*">     <div class="val" id="kpiFiltered">\${data.filtered}</div>   <div class="lbl">Filtered</div></div>
+      <div class="kpi purple static">                                                                      <div class="val" id="kpiSalary">\${data.salaryCount}</div>  <div class="lbl">With salary</div></div>
     </div>
-    <div class="charts-grid">
-      <div class="card">\${cardTitle('Outcome breakdown', 'outcome')}<div class="chart-wrap"><canvas id="cOutcome"></canvas></div></div>
-      <div class="card">\${cardTitle('RAG rating (rated jobs)', 'rag')}<div class="chart-wrap"><canvas id="cRag"></canvas></div></div>
-      <div class="card">\${cardTitle('Jobs by source', 'source')}<div class="chart-wrap tall"><canvas id="cSource"></canvas></div></div>
-      <div class="card">\${cardTitle('Jobs by search', 'search')}<div class="chart-wrap tall"><canvas id="cSearch"></canvas></div></div>
-      <div class="card">\${cardTitle('Salary range', 'salary')}<div class="chart-wrap"><canvas id="cSalary"></canvas></div></div>
-      <div class="card" id="contractCard">\${cardTitle('Contract rates', 'salary')}<div id="contractStats"></div></div>
-      <div class="card">\${cardTitle('Source quality funnel', 'sourceQuality')}<div class="chart-wrap tall"><canvas id="cSourceQuality"></canvas></div></div>
-      <div class="card">\${cardTitle('Outcomes over sequence', 'outcomesOverTime')}<div class="chart-wrap tall"><canvas id="cOutcomeTime"></canvas></div></div>
-      <div class="card">\${cardTitle('Filter pareto', 'pareto')}<div class="chart-wrap tall"><canvas id="cPareto"></canvas></div></div>
-      <div class="card">\${cardTitle('Search effectiveness heatmap', 'searchHeatmap')}<div class="chart-wrap xtall"><canvas id="cSearchHeat"></canvas></div></div>
-      <div class="card">\${cardTitle('Source reliability snapshot', 'reliability')}<div class="chart-wrap"><canvas id="cReliability"></canvas></div></div>
-      <div class="card">\${cardTitle('SPC control view (notified)', 'control')}<div class="chart-wrap"><canvas id="cControl"></canvas></div></div>
-      <div class="card">\${cardTitle('Run throughput view', 'throughput')}<div class="chart-wrap"><canvas id="cThroughput"></canvas></div></div>
-      <div class="card">\${cardTitle('Schedule heatmap', 'schedule')}<div class="chart-wrap xtall"><canvas id="cSchedule"></canvas></div></div>
-      <div class="card">\${cardTitle('Relevance vs outcome scatter', 'scatter')}<div class="chart-wrap"><canvas id="cScatter"></canvas></div></div>
-    </div>
-    <div class="diagram-card">
-      <div class="diagram-header">
-        <span class="diagram-title">Pipeline + data model (selected csv)</span>
-        <span class="scope-badge">Scope: \${escHtml(selectedFile)}</span>
+
+    <div id="filterBar" class="filter-bar empty"></div>
+
+    <section class="section open" data-section="overview">
+      <div class="section-header">
+        <span class="chev">▶</span>
+        <h2>Overview</h2>
+        <span class="section-meta">6 visuals · click a slice to filter the table</span>
       </div>
-      <div class="diagram-grid">
-        <div class="diagram-box">
-          <h2>\${cardTitle('How pipeline works', 'pipeline').replace('<h2>','').replace('</h2>','')}</h2>
-          <div class="diagram-flow">
-            <div class="flow-step">Source adapters</div>
-            <div class="flow-step">Normalize fields</div>
-            <div class="flow-step">Dedup in SQLite</div>
-            <div class="flow-step">Seniority + relevance filters</div>
-            <div class="flow-step">Discord notify + CSV row logging</div>
-          </div>
-        </div>
-        <div class="diagram-box">
-          <h2>\${cardTitle('CSV schema and derived metrics', 'schema').replace('<h2>','').replace('</h2>','')}</h2>
-          <div class="schema-row">
-            <div class="schema-node">CSV row fields<br/><small>source, search, outcome, rag, salary, posted_at</small></div>
-            <div class="schema-join">→</div>
-            <div class="schema-node">Derived panels<br/><small>funnel, pareto, heatmaps, control view, scatter</small></div>
-          </div>
+      <div class="section-body">
+        <div class="charts-grid">
+          <div class="card" data-filter-key="outcome">\${cardTitle('Outcome breakdown', 'outcome')}<div class="chart-wrap"><canvas id="cOutcome"></canvas></div></div>
+          <div class="card" data-filter-key="rag_rating">\${cardTitle('RAG rating (rated jobs)', 'rag')}<div class="chart-wrap"><canvas id="cRag"></canvas></div></div>
+          <div class="card" data-filter-key="source">\${cardTitle('Jobs by source', 'source')}<div class="chart-wrap tall"><canvas id="cSource"></canvas></div></div>
+          <div class="card" data-filter-key="search_name">\${cardTitle('Jobs by search', 'search')}<div class="chart-wrap tall"><canvas id="cSearch"></canvas></div></div>
+          <div class="card" data-filter-key="salaryBucket">\${cardTitle('Salary range', 'salary')}<div class="chart-wrap"><canvas id="cSalary"></canvas></div></div>
+          <div class="card" id="contractCard" data-filter-key="rateType">\${cardTitle('Contract rates', 'salary')}<div id="contractStats"></div></div>
         </div>
       </div>
-    </div>
-    \${renderHelpGlossary()}
-    \${buildTableHTML(tableRows)}
+    </section>
+
+    <section class="section" data-section="quality">
+      <div class="section-header">
+        <span class="chev">▶</span>
+        <h2>Source &amp; search quality</h2>
+        <span class="section-meta">4 visuals · reliability and filter drivers</span>
+      </div>
+      <div class="section-body">
+        <div class="charts-grid">
+          <div class="card" data-filter-key="source">\${cardTitle('Source quality funnel', 'sourceQuality')}<div class="chart-wrap tall"><canvas id="cSourceQuality"></canvas></div></div>
+          <div class="card" data-filter-key="source">\${cardTitle('Source reliability snapshot', 'reliability')}<div class="chart-wrap"><canvas id="cReliability"></canvas></div></div>
+          <div class="card" data-filter-key="search_name">\${cardTitle('Search effectiveness heatmap', 'searchHeatmap')}<div class="chart-wrap xtall"><canvas id="cSearchHeat"></canvas></div></div>
+          <div class="card" data-filter-key="outcome">\${cardTitle('Filter pareto', 'pareto')}<div class="chart-wrap tall"><canvas id="cPareto"></canvas></div></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" data-section="timing">
+      <div class="section-header">
+        <span class="chev">▶</span>
+        <h2>Throughput &amp; timing</h2>
+        <span class="section-meta">5 visuals · sequence, SPC and schedule</span>
+      </div>
+      <div class="section-body">
+        <div class="charts-grid">
+          <div class="card">\${cardTitle('Outcomes over sequence', 'outcomesOverTime')}<div class="chart-wrap tall"><canvas id="cOutcomeTime"></canvas></div></div>
+          <div class="card">\${cardTitle('SPC control view (notified)', 'control')}<div class="chart-wrap"><canvas id="cControl"></canvas></div></div>
+          <div class="card">\${cardTitle('Run throughput view', 'throughput')}<div class="chart-wrap"><canvas id="cThroughput"></canvas></div></div>
+          <div class="card">\${cardTitle('Schedule heatmap', 'schedule')}<div class="chart-wrap xtall"><canvas id="cSchedule"></canvas></div></div>
+          <div class="card" data-filter-key="outcome">\${cardTitle('Relevance vs outcome scatter', 'scatter')}<div class="chart-wrap"><canvas id="cScatter"></canvas></div></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" data-section="about">
+      <div class="section-header">
+        <span class="chev">▶</span>
+        <h2>About the data</h2>
+        <span class="section-meta">pipeline diagram and glossary</span>
+      </div>
+      <div class="section-body">
+        <div class="diagram-card">
+          <div class="diagram-header">
+            <span class="diagram-title">Pipeline + data model (selected csv)</span>
+            <span class="scope-badge">Scope: \${escHtml(selectedFile)}</span>
+          </div>
+          <div class="diagram-grid">
+            <div class="diagram-box">
+              <h2>\${cardTitle('How pipeline works', 'pipeline').replace('<h2>','').replace('</h2>','')}</h2>
+              <div class="diagram-flow">
+                <div class="flow-step">Source adapters</div>
+                <div class="flow-step">Normalize fields</div>
+                <div class="flow-step">Dedup in SQLite</div>
+                <div class="flow-step">Seniority + relevance filters</div>
+                <div class="flow-step">Discord notify + CSV row logging</div>
+              </div>
+            </div>
+            <div class="diagram-box">
+              <h2>\${cardTitle('CSV schema and derived metrics', 'schema').replace('<h2>','').replace('</h2>','')}</h2>
+              <div class="schema-row">
+                <div class="schema-node">CSV row fields<br/><small>source, search, outcome, rag, salary, posted_at</small></div>
+                <div class="schema-join">→</div>
+                <div class="schema-node">Derived panels<br/><small>funnel, pareto, heatmaps, control view, scatter</small></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        \${renderHelpGlossary()}
+      </div>
+    </section>
+
+    <section class="section open" data-section="table">
+      <div class="section-header">
+        <span class="chev">▶</span>
+        <h2>Data table</h2>
+        <span class="section-meta">filterable grid · use chart slices or chips to narrow down</span>
+      </div>
+      <div class="section-body">
+        \${buildTableHTML(tableRows)}
+      </div>
+    </section>
   \`;
 
   // charts
@@ -928,7 +1196,7 @@ function render(data) {
     data: outLabels.map(l => data.byOutcome[l]),
     backgroundColor: outLabels.map(l => OUTCOME_COLORS[l] || '#6366f1'),
     borderWidth: 2, borderColor: '#1a1d27',
-  }]);
+  }], { onPick: ({ label }) => toggleCrossFilter('outcome', label) });
 
   const ragLabels = Object.keys(data.byRag);
   if (ragLabels.length) {
@@ -936,7 +1204,7 @@ function render(data) {
       data: ragLabels.map(l => data.byRag[l]),
       backgroundColor: ragLabels.map(l => RAG_COLORS[l] || '#94a3b8'),
       borderWidth: 2, borderColor: '#1a1d27',
-    }]);
+    }], { onPick: ({ label }) => toggleCrossFilter('rag_rating', label) });
   } else {
     document.getElementById('cRag').closest('.card')
       .insertAdjacentHTML('beforeend', '<p style="color:#64748b;font-size:.82rem;margin-top:.5rem">No rated jobs in this run</p>');
@@ -946,7 +1214,10 @@ function render(data) {
   mkChart('cSource', 'bar', srcLabels, [{
     label: 'Jobs', data: srcLabels.map(l => data.bySource[l]),
     backgroundColor: PALETTE.slice(0, srcLabels.length), borderRadius: 4,
-  }], { plugins: { legend: { display: false } } });
+  }], {
+    plugins: { legend: { display: false } },
+    onPick: ({ label }) => toggleCrossFilter('source', label),
+  });
 
   const srchLabels = Object.keys(data.bySearch).sort((a,b) => data.bySearch[b]-data.bySearch[a]);
   mkChart('cSearch', 'bar', srchLabels, [{
@@ -959,20 +1230,27 @@ function render(data) {
       x: { ticks: { color: '#94a3b8', font: { size: 11 } }, grid: { color: '#1e2235' } },
       y: { ticks: { color: '#94a3b8', font: { size: 10 } }, grid: { color: '#1e2235' } },
     },
+    onPick: ({ label }) => toggleCrossFilter('search_name', label),
   });
 
   const sLabels = Object.keys(data.salaryBuckets);
   mkChart('cSalary', 'bar', sLabels, [{
     label: 'Jobs', data: sLabels.map(l => data.salaryBuckets[l]),
     backgroundColor: '#6366f1', borderRadius: 4,
-  }], { plugins: { legend: { display: false } } });
+  }], {
+    plugins: { legend: { display: false } },
+    onPick: ({ label }) => toggleCrossFilter('salaryBucket', label),
+  });
 
   const sq = analytics.sourceQuality || [];
   mkChart('cSourceQuality', 'bar', sq.map(s => s.source), [
     { label: 'Fetched', data: sq.map(s => s.fetched), backgroundColor: '#334155' },
     { label: 'Passed', data: sq.map(s => s.passed), backgroundColor: '#22d3ee' },
     { label: 'Notified', data: sq.map(s => s.notified), backgroundColor: '#4ade80' },
-  ], { scales: { x: { stacked: true, ticks: { color: '#94a3b8', font: { size: 10 }, autoSkip: false } }, y: { stacked: true, ticks: { color: '#94a3b8' } } } });
+  ], {
+    scales: { x: { stacked: true, ticks: { color: '#94a3b8', font: { size: 10 }, autoSkip: false } }, y: { stacked: true, ticks: { color: '#94a3b8' } } },
+    onPick: ({ label }) => toggleCrossFilter('source', label),
+  });
 
   mkChart('cOutcomeTime', 'bar', sequence.labels, [
     { label: 'Notified', data: sequence.notified, backgroundColor: '#4ade80' },
@@ -984,10 +1262,13 @@ function render(data) {
   mkChart('cPareto', 'bar', pareto.map(p => p.label.replace('filtered_', '')), [
     { label: 'Count', data: pareto.map(p => p.value), backgroundColor: '#f59e0b', yAxisID: 'y' },
     { label: 'Cumulative %', data: pareto.map(p => p.cumulativePct), type: 'line', borderColor: '#a78bfa', backgroundColor: '#a78bfa', yAxisID: 'y1', tension: .2 },
-  ], { scales: { y: { ticks: { color: '#94a3b8' } }, y1: { position: 'right', min: 0, max: 100, ticks: { color: '#a78bfa', callback: v => v + '%' }, grid: { drawOnChartArea: false } } } });
+  ], {
+    scales: { y: { ticks: { color: '#94a3b8' } }, y1: { position: 'right', min: 0, max: 100, ticks: { color: '#a78bfa', callback: v => v + '%' }, grid: { drawOnChartArea: false } } },
+    onPick: ({ index }) => { const full = pareto[index]?.label; if (full) toggleCrossFilter('outcome', full); },
+  });
 
   const searchEff = (analytics.searchEffectiveness || []).slice(0, 14);
-  const heatOutcomes = ['notified', 'already_seen', 'filtered_match', 'filtered_seniority', 'filtered_salary', 'filtered_relevance', 'error'];
+  const heatOutcomes = ['new', 'already_seen', 'filtered_match', 'filtered_seniority', 'filtered_salary', 'filtered_rag'];
   const searchHeatData = [];
   searchEff.forEach((s, yi) => {
     heatOutcomes.forEach((o, xi) => {
@@ -1002,11 +1283,16 @@ function render(data) {
       x: { type: 'linear', min: -0.5, max: heatOutcomes.length - 0.5, ticks: { stepSize: 1, color: '#94a3b8', callback: v => heatOutcomes[v] || '' } },
       y: { type: 'linear', min: -0.5, max: Math.max(0, searchEff.length - 0.5), ticks: { stepSize: 1, color: '#94a3b8', callback: v => (searchEff[v]?.search || '').slice(0, 18) } },
     },
+    onPick: ({ raw }) => { if (raw?.label) toggleCrossFilter('search_name', raw.label); },
   });
 
   mkChart('cReliability', 'bar', sq.map(s => s.source), [{
     label: 'Reliability %', data: sq.map(s => s.reliability), backgroundColor: sq.map(s => colorFromPercent(s.reliability)),
-  }], { plugins: { legend: { display: false } }, scales: { y: { min: 0, max: 100, ticks: { color: '#94a3b8', callback: v => v + '%' } }, x: { ticks: { color: '#94a3b8' } } } });
+  }], {
+    plugins: { legend: { display: false } },
+    scales: { y: { min: 0, max: 100, ticks: { color: '#94a3b8', callback: v => v + '%' } }, x: { ticks: { color: '#94a3b8' } } },
+    onPick: ({ label }) => toggleCrossFilter('source', label),
+  });
 
   mkChart('cControl', 'line', sequence.labels, [
     { label: 'Notified', data: sequence.notified, borderColor: '#4ade80', backgroundColor: '#4ade80', tension: .25 },
@@ -1050,6 +1336,7 @@ function render(data) {
       x: { type: 'linear', ticks: { color: '#94a3b8' }, title: { display: true, text: 'Row order', color: '#64748b' } },
       y: { type: 'linear', ticks: { color: '#94a3b8' }, title: { display: true, text: 'RAG score', color: '#64748b' } },
     },
+    onPick: ({ raw }) => { if (raw?.outcome) toggleCrossFilter('outcome', raw.outcome); },
   });
 
   // contract rates card
@@ -1061,7 +1348,7 @@ function render(data) {
     if (!cr.day.length && !cr.hour.length) {
       contractEl.innerHTML = '<p style="color:#64748b;font-size:.82rem;margin-top:.5rem">No contract rates found in this run</p>';
     } else {
-      const renderGroup = (items, unit, badge) => {
+      const renderGroup = (items, unit, badge, rateType) => {
         if (!items.length) return '';
         const raws    = items.map(i => i.raw);
         const netMins = items.map(i => i.netMin);
@@ -1070,7 +1357,7 @@ function render(data) {
         const avgNet   = avg(netMins.map((lo,i) => Math.round((lo + netMaxs[i]) / 2)));
         const minNet   = Math.min(...netMins);
         const maxNet   = Math.max(...netMaxs);
-        return \`<div class="cr-row">
+        return \`<div class="cr-row" data-rate-type="\${rateType}" style="cursor:pointer" title="Click to filter table by \${rateType} contracts">
           <span class="badge \${badge}">\${unit === '/day' ? 'Daily' : 'Hourly'}</span>
           <span class="cr-count">\${items.length} role\${items.length!==1?'s':''}</span>
           <span class="cr-range">£\${Math.min(...raws)}–£\${Math.max(...raws)}\${unit} · avg £\${avgRate}\${unit}</span>
@@ -1079,14 +1366,35 @@ function render(data) {
       };
       contractEl.innerHTML =
         '<p class="cr-note">220 billable days · 7.5 hr/day · ~22.5% cost deduction</p>' +
-        renderGroup(cr.day,  '/day', 'rate-day') +
-        renderGroup(cr.hour, '/hr',  'rate-hour');
+        renderGroup(cr.day,  '/day', 'rate-day',  'day') +
+        renderGroup(cr.hour, '/hr',  'rate-hour', 'hour');
+      contractEl.querySelectorAll('.cr-row[data-rate-type]').forEach(row => {
+        row.addEventListener('click', () => toggleCrossFilter('rateType', row.dataset.rateType));
+      });
     }
+  }
+
+  // KPI clicks — filter table by outcome
+  document.querySelectorAll('.kpi[data-kpi-outcome]').forEach(el => {
+    el.addEventListener('click', () => toggleCrossFilter('outcome', el.dataset.kpiOutcome));
+  });
+  const kpiFiltered = document.querySelector('.kpi[data-kpi="filtered"]');
+  if (kpiFiltered) {
+    kpiFiltered.addEventListener('click', () => {
+      const active = crossFilters.outcome && [...crossFilters.outcome].every(v => v.startsWith('filtered'));
+      if (active) { clearCrossFilters(); return; }
+      const filteredOutcomes = Object.keys(data.byOutcome).filter(k => k.startsWith('filtered'));
+      crossFilters = { outcome: new Set(filteredOutcomes) };
+      syncCrossFilterUI();
+    });
   }
 
   initTableEvents();
   renderTable();
   initHelpTips();
+  initSectionToggles();
+  renderFilterBar();
+  markActiveCards();
 }
 
 // ── Utilities ─────────────────────────────────────────────────────────────────
@@ -1105,6 +1413,58 @@ async function loadFile(filename) {
   render(data);
 }
 
+let trendChart = null;
+async function loadTrend() {
+  try {
+    const res = await fetch(API_BASE + '/api/trend?limit=30');
+    if (!res.ok) return;
+    const { series } = await res.json();
+    const section = document.getElementById('trendSection');
+    if (!series || series.length < 2) { section.style.display = 'none'; return; }
+    section.style.display = 'block';
+
+    const labels = series.map(s => {
+      const d = s.runAt ? new Date(s.runAt) : null;
+      return d && !isNaN(d) ? d.toLocaleString('en-GB', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' }) : s.file;
+    });
+    const notifyRate = series.map(s => s.notifyRate);
+    const fetched    = series.map(s => s.fetched);
+    const notified   = series.map(s => s.notified);
+
+    // trailing 7-run mean as a "yesterday's baseline" reference
+    const baseline = notifyRate.map((_, i) => {
+      const window = notifyRate.slice(Math.max(0, i - 6), i + 1);
+      return Math.round((window.reduce((a, b) => a + b, 0) / window.length) * 10) / 10;
+    });
+
+    if (trendChart) trendChart.destroy();
+    const ctx = document.getElementById('cTrend');
+    trendChart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [
+          { label: 'Notify rate %', data: notifyRate, borderColor: '#4ade80', backgroundColor: 'rgba(74,222,128,.12)', yAxisID: 'y', tension: .25, fill: true },
+          { label: '7-run mean',    data: baseline,   borderColor: '#a5b4fc', borderDash: [6, 4], yAxisID: 'y', tension: .25, pointRadius: 0 },
+          { label: 'Fetched',       data: fetched,    borderColor: '#60a5fa', yAxisID: 'y1', tension: .25, pointRadius: 0, hidden: true },
+          { label: 'Notified',      data: notified,   borderColor: '#fbbf24', yAxisID: 'y1', tension: .25, pointRadius: 0, hidden: true },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: { legend: { labels: { color: '#cbd5e1' } } },
+        scales: {
+          x:  { ticks: { color: '#64748b', maxRotation: 0, autoSkip: true } },
+          y:  { position: 'left',  ticks: { color: '#4ade80', callback: v => v + '%' }, grid: { color: '#1e2235' }, beginAtZero: true },
+          y1: { position: 'right', ticks: { color: '#94a3b8' }, grid: { display: false } },
+        },
+      },
+    });
+  } catch { /* silently skip trend chart on errors */ }
+}
+
 async function init() {
   const res = await fetch(API_BASE + '/api/files');
   const files = await res.json();
@@ -1117,6 +1477,7 @@ async function init() {
     sel.appendChild(opt);
   });
   sel.addEventListener('change', () => loadFile(sel.value));
+  loadTrend();
   if (files.length) await loadFile(files[0]);
   else document.getElementById('main').innerHTML = '<div id="error">No CSV files found in logs/runs/</div>';
 }
@@ -1167,6 +1528,7 @@ async function refreshFiles() {
       sel.value = files[0];
       loadFile(files[0]);
     }
+    loadTrend();
   } catch (_) {}
 }
 
@@ -1283,9 +1645,7 @@ const server = http.createServer((req, res) => {
       res.writeHead(404); res.end('Not found'); return;
     }
     try {
-      const raw = fs.readFileSync(filePath, 'utf8');
-      const rows = parseCsv(raw);
-      const data = aggregate(rows);
+      const data = getAggregate(filePath, file);
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(data));
     } catch (e) {
@@ -1294,11 +1654,38 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  if (pathname === '/api/trend') {
+    const limit = Math.min(100, Math.max(5, Number(url.searchParams.get('limit')) || 30));
+    const files = listCsvFiles().slice(0, limit).reverse(); // oldest → newest
+    const series = [];
+    for (const f of files) {
+      try {
+        const data = getAggregate(path.join(RUNS_DIR, f), f);
+        const fetched = data.total || 0;
+        series.push({
+          file: f,
+          runAt: data.runAt || '',
+          trigger: data.trigger || '',
+          fetched,
+          notified: data.notified || 0,
+          alreadySeen: data.alreadySeen || 0,
+          filtered: data.filtered || 0,
+          notifyRate: fetched ? Math.round((data.notified / fetched) * 1000) / 10 : 0,
+        });
+      } catch { /* skip unreadable files */ }
+    }
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ series }));
+    return;
+  }
+
   res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
   res.end(HTML);
 });
 
 server.listen(PORT, HOST, () => {
-  console.log(`Dashboard running → http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}`);
+  const displayHost = HOST === '0.0.0.0' ? 'localhost' : HOST;
+  console.log(`Dashboard running → http://${displayHost}:${PORT}`);
   if (TOKEN) console.log('Dashboard token protection: enabled');
+  if (!LOOPBACK_HOSTS.has(HOST)) console.log(`Dashboard bound to non-loopback host ${HOST}; token required on bot-control endpoints.`);
 });

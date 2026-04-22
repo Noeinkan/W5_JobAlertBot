@@ -3,6 +3,17 @@ import path from 'node:path';
 import Database from 'better-sqlite3';
 import { appConfig } from './config.js';
 
+const JOB_COLUMN_ADDITIONS = [
+  ['description', 'TEXT'],
+  ['salary_text', 'TEXT'],
+  ['rag_rating', 'TEXT'],
+  ['rag_score', 'INTEGER'],
+  ['rag_reason', 'TEXT'],
+  ['seniority_passed', 'INTEGER'],
+  ['salary_passed', 'INTEGER'],
+  ['filter_reason', 'TEXT'],
+];
+
 function createSchema(db) {
   db.exec(`
     CREATE TABLE IF NOT EXISTS jobs (
@@ -20,6 +31,14 @@ function createSchema(db) {
       posted_at TEXT,
       found_at TEXT NOT NULL DEFAULT (datetime('now')),
       notified BOOLEAN DEFAULT 0,
+      description TEXT,
+      salary_text TEXT,
+      rag_rating TEXT,
+      rag_score INTEGER,
+      rag_reason TEXT,
+      seniority_passed INTEGER,
+      salary_passed INTEGER,
+      filter_reason TEXT,
       UNIQUE(title, company, source)
     );
 
@@ -32,6 +51,13 @@ function createSchema(db) {
       new_jobs INTEGER
     );
   `);
+
+  const existing = new Set(db.prepare('PRAGMA table_info(jobs)').all().map((row) => row.name));
+  for (const [name, type] of JOB_COLUMN_ADDITIONS) {
+    if (!existing.has(name)) {
+      db.exec(`ALTER TABLE jobs ADD COLUMN ${name} ${type}`);
+    }
+  }
 }
 
 function createStatements(db) {
@@ -49,7 +75,15 @@ function createStatements(db) {
         search_id,
         is_contract,
         posted_at,
-        notified
+        notified,
+        description,
+        salary_text,
+        rag_rating,
+        rag_score,
+        rag_reason,
+        seniority_passed,
+        salary_passed,
+        filter_reason
       ) VALUES (
         @external_id,
         @source,
@@ -62,7 +96,15 @@ function createStatements(db) {
         @search_id,
         @is_contract,
         @posted_at,
-        0
+        0,
+        @description,
+        @salary_text,
+        @rag_rating,
+        @rag_score,
+        @rag_reason,
+        @seniority_passed,
+        @salary_passed,
+        @filter_reason
       )
     `),
     markNotifiedStatement: db.prepare(`
@@ -107,9 +149,13 @@ function createStatements(db) {
         url,
         search_id,
         is_contract,
-        posted_at
+        posted_at,
+        rag_rating,
+        rag_score,
+        rag_reason
       FROM jobs
       WHERE notified = 0
+        AND filter_reason IS NULL
       ORDER BY found_at ASC, id ASC
     `),
     jobsTodayListStatement: db.prepare(`
@@ -165,6 +211,14 @@ export function createDatabase(databasePath = appConfig.dbPath) {
         search_id: job.searchId ?? null,
         is_contract: job.isContract ? 1 : 0,
         posted_at: job.postedAt ?? null,
+        description: job.description ?? null,
+        salary_text: job.salaryText ?? null,
+        rag_rating: job.ragRating ?? null,
+        rag_score: Number.isFinite(job.ragScore) ? job.ragScore : null,
+        rag_reason: job.ragReason ?? null,
+        seniority_passed: job.seniorityPassed == null ? null : job.seniorityPassed ? 1 : 0,
+        salary_passed: job.salaryPassed == null ? null : job.salaryPassed ? 1 : 0,
+        filter_reason: job.filterReason ?? null,
       };
 
       const result = statements.insertJobStatement.run(normalized);
@@ -203,6 +257,9 @@ export function createDatabase(databasePath = appConfig.dbPath) {
         searchId: job.search_id,
         isContract: Boolean(job.is_contract),
         postedAt: job.posted_at,
+        ragRating: job.rag_rating,
+        ragScore: job.rag_score,
+        ragReason: job.rag_reason,
       }));
     },
     close() {

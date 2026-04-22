@@ -191,101 +191,105 @@ async function runSearchCycle(trigger = 'scheduled') {
             source: sourceClient.name,
           };
 
-          // Filter and enrich — loop instead of .filter() so dropped jobs land in the CSV
-          const jobsToScore = [];
-          for (const job of rawJobs) {
+          // Score every candidate; annotate with filter_reason instead of dropping.
+          // jobMatchesSearch stays as a hard filter — mismatches shouldn't be attributed to this search.
+          const scoredJobs = [];
+          for (const rawJob of rawJobs) {
             const base = {
               ...csvBase,
-              title: job.title,
-              company: job.company,
-              location: job.location,
-              salary_text: job.salaryText,
-              salary_min: job.salaryMin,
-              salary_max: job.salaryMax,
-              is_contract: job.isContract ? 'yes' : 'no',
-              url: job.url,
-              posted_at: job.postedAt,
+              title: rawJob.title,
+              company: rawJob.company,
+              location: rawJob.location,
+              salary_text: rawJob.salaryText,
+              salary_min: rawJob.salaryMin,
+              salary_max: rawJob.salaryMax,
+              is_contract: rawJob.isContract ? 'yes' : 'no',
+              url: rawJob.url,
+              posted_at: rawJob.postedAt,
             };
 
-            if (!jobMatchesSearch(job, search)) {
+            if (!jobMatchesSearch(rawJob, search)) {
               cycleStats.filteredNotRelevant += 1;
-              csvLog.append({ ...base, desc_chars: job.description?.length ?? 0, enriched: 'no', outcome: 'filtered_match' });
+              csvLog.append({ ...base, desc_chars: rawJob.description?.length ?? 0, enriched: 'no', outcome: 'filtered_match' });
               continue;
             }
 
-            if (!passesMinimumSalary(job, search.min_salary)) {
-              cycleStats.filteredNotRelevant += 1;
-              csvLog.append({ ...base, desc_chars: job.description?.length ?? 0, enriched: 'no', outcome: 'filtered_salary' });
-              continue;
-            }
-
-            let scored = job;
+            let job = rawJob;
             let enriched = false;
             if (search.enrich_jobs) {
               await delay(env.enrichDelayMs);
-              const enrichedJob = await enrichJobDescription(job);
-              enriched = (enrichedJob.description?.length ?? 0) > (job.description?.length ?? 0);
-              scored = enrichedJob;
+              const enrichedJob = await enrichJobDescription(rawJob);
+              enriched = (enrichedJob.description?.length ?? 0) > (rawJob.description?.length ?? 0);
+              job = enrichedJob;
             }
 
-            jobsToScore.push({ job: scored, base, enriched });
-          }
-
-          const seniorJobs = [];
-
-          for (const { job, base, enriched } of jobsToScore) {
-            const descChars = job.description?.length ?? 0;
-            const csvRow = { ...base, desc_chars: descChars, enriched: enriched ? 'yes' : 'no' };
-
+            const salaryPassed = passesMinimumSalary(job, search.min_salary);
             const seniority = isSeniorEnough(job);
-            if (!seniority.passes) {
-              cycleStats.filteredSeniority += 1;
-              logger.debug('Job filtered by seniority', { title: job.title, source: sourceClient.name });
-              csvLog.append({ ...csvRow, outcome: 'filtered_seniority' });
-              continue;
-            }
-
             const { rating, score, reason } = scoreJob(job);
 
-            if (rating === 'Red') {
+            let filterReason = null;
+            if (!salaryPassed) {
+              filterReason = 'filtered_salary';
+              cycleStats.filteredNotRelevant += 1;
+            } else if (!seniority.passes) {
+              filterReason = 'filtered_seniority';
+              cycleStats.filteredSeniority += 1;
+            } else if (rating === 'Red') {
+              filterReason = 'filtered_rag';
               cycleStats.filteredRag += 1;
-              logger.debug('Job filtered by RAG score', { title: job.title, source: sourceClient.name, score });
-              csvLog.append({ ...csvRow, outcome: 'filtered_rag', rag_rating: rating, rag_score: score, rag_reason: reason });
-              continue;
             }
 
-            seniorJobs.push({
-              ...job,
-              tags: job.tags ?? search.tags,
-              ragRating: rating,
-              ragScore: score,
-              ragReason: reason,
-              _csvRow: { ...csvRow, rag_rating: rating, rag_score: score, rag_reason: reason },
+            scoredJobs.push({
+              job: {
+                ...job,
+                tags: job.tags ?? search.tags,
+                ragRating: rating,
+                ragScore: score,
+                ragReason: reason,
+                seniorityPassed: seniority.passes,
+                salaryPassed,
+                filterReason,
+              },
+              csvRow: {
+                ...base,
+                desc_chars: job.description?.length ?? 0,
+                enriched: enriched ? 'yes' : 'no',
+                rag_rating: rating,
+                rag_score: score,
+                rag_reason: reason,
+              },
+              filterReason,
             });
           }
 
-          totalResults += seniorJobs.length;
+          const eligibleJobs = scoredJobs.filter((entry) => entry.filterReason == null);
+          totalResults += eligibleJobs.length;
           let newJobsForRunLog = 0;
 
-          for (const job of seniorJobs) {
+          for (const { job, csvRow, filterReason } of scoredJobs) {
             const inserted = insertJob(job);
+            let outcome;
 
-            if (inserted) {
+            if (filterReason) {
+              outcome = filterReason;
+            } else if (inserted) {
+              outcome = 'new';
               newJobs.push(job);
               newJobsForRunLog += 1;
-              csvLog.append({ ...job._csvRow, outcome: 'new' });
             } else {
+              outcome = 'already_seen';
               cycleStats.alreadySeen += 1;
-              csvLog.append({ ...job._csvRow, outcome: 'already_seen' });
             }
+
+            csvLog.append({ ...csvRow, outcome });
           }
 
-          logger.info(`  → ${seniorJobs.length} passed filters, ${newJobsForRunLog} new`);
+          logger.info(`  → ${eligibleJobs.length} passed filters, ${newJobsForRunLog} new`);
 
           logRun({
             source: sourceClient.name,
             searchId: search.id,
-            resultsFound: seniorJobs.length,
+            resultsFound: eligibleJobs.length,
             newJobs: newJobsForRunLog,
           });
         } catch (error) {

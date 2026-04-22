@@ -54,3 +54,38 @@ test('insertJob treats same title and company from different sources as distinct
     db.close();
   }
 });
+
+test('getPendingJobs excludes jobs annotated with a filter_reason', () => {
+  const db = createDatabase(':memory:');
+
+  try {
+    db.insertJob(createJob({
+      externalId: 'eligible',
+      title: 'Eligible BIM Lead',
+      ragRating: 'Green',
+      ragScore: 15,
+      seniorityPassed: true,
+      salaryPassed: true,
+      filterReason: null,
+    }));
+    db.insertJob(createJob({
+      externalId: 'dropped',
+      title: 'Low-fit BIM Role',
+      source: 'reed',
+      ragRating: 'Red',
+      ragScore: 2,
+      seniorityPassed: true,
+      salaryPassed: true,
+      filterReason: 'filtered_rag',
+    }));
+
+    const pending = db.getPendingJobs();
+
+    assert.equal(pending.length, 1);
+    assert.equal(pending[0].title, 'Eligible BIM Lead');
+    assert.equal(pending[0].ragRating, 'Green');
+    assert.equal(pending[0].ragScore, 15);
+  } finally {
+    db.close();
+  }
+});
