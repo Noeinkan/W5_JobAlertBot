@@ -12,7 +12,13 @@
       "Bash(curl -s -L -o /dev/null -w \"%{http_code}\" --max-time 10 -A \"Mozilla/5.0\" \"https://www.jobserve.com/gb/en/JobServeHome.aspx?Keywords=BIM&Location=London&Radius=30&outputtype=rss\")",
       "Bash(node --check src/dashboard.js)",
       "Bash(node --input-type=module -e \"import { getPendingJobs, getStats } from './src/db.js'; const s = getStats\\(\\); console.log\\(JSON.stringify\\({ totalJobs: s.totalJobs, jobsToday: s.jobsToday, sources: s.bySource.length, pendingCount: getPendingJobs\\(\\).length }, null, 2\\)\\);\")",
-      "Bash(node --input-type=module -e \"import Database from 'better-sqlite3'; const db = new Database\\('./data/jobs.db'\\); const cols = db.prepare\\('PRAGMA table_info\\(jobs\\)'\\).all\\(\\).map\\(r => r.name\\); console.log\\(cols.join\\(', '\\)\\);\")"
+      "Bash(node --input-type=module -e \"import Database from 'better-sqlite3'; const db = new Database\\('./data/jobs.db'\\); const cols = db.prepare\\('PRAGMA table_info\\(jobs\\)'\\).all\\(\\).map\\(r => r.name\\); console.log\\(cols.join\\(', '\\)\\);\")",
+      "Bash(ssh root@77.42.70.26 'pm2 status; echo \"---NGINX---\"; systemctl status nginx --no-pager | head -20; echo \"---PORTS---\"; ss -ltnp | grep -E \":80|:3099|:443\"; echo \"---DASHBOARD LOGS---\"; pm2 logs dashboard --lines 30 --nostream --err')",
+      "Bash(ssh root@77.42.70.26 'docker ps --format \"table {{.Names}}\\\\t{{.Ports}}\\\\t{{.Status}}\"; echo \"---ENV---\"; grep -E \"DASHBOARD\" /opt/job-alert-bot/.env 2>/dev/null || echo \"no DASHBOARD_* in .env\"')",
+      "Bash(ssh root@77.42.70.26 'docker inspect bep-generator-nginx-1 --format \"{{range .Mounts}}{{.Source}} -> {{.Destination}}{{println}}{{end}}\"; echo \"---\"; docker inspect bep-generator-nginx-1 --format \"{{.HostConfig.NetworkMode}} / host.docker.internal: {{range .HostConfig.ExtraHosts}}{{.}} {{end}}\"; echo \"---COMPOSE---\"; find /opt /root /home -name \"docker-compose*.y*ml\" 2>/dev/null | head -5')",
+      "Bash(ssh root@77.42.70.26 'echo \"===default.conf===\"; cat /opt/bep-generator/nginx/conf.d/default.conf; echo; echo \"===noeinsol.conf===\"; cat /opt/bep-generator/nginx/conf.d/noeinsol.conf')",
+      "Bash(ssh root@77.42.70.26 'pm2 status; echo \"---\"; ss -ltnp | grep 3099; echo \"---\"; pm2 logs dashboard --lines 5 --nostream')",
+      "Bash(ssh root@77.42.70.26 'cd /opt/job-alert-bot && pm2 delete dashboard && pm2 start ecosystem.config.cjs --only dashboard && pm2 save --force; sleep 2; echo \"---\"; pm2 status; echo \"---PORT---\"; ss -ltnp | grep 3099; echo \"---LOGS---\"; tail -3 logs/dashboard-out.log')"
     ]
   }
 }

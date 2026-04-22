@@ -2,6 +2,7 @@
  * Dashboard server — browse run CSVs in the browser.
  * Usage: node src/dashboard.js [--port 3099]
  */
+import 'dotenv/config';
 import http from 'http';
 import fs from 'fs';
 import path from 'path';

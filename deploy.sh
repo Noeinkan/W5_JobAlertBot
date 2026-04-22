@@ -48,20 +48,54 @@ ssh "$SERVER" bash <<EOF
 
   npm ci --omit=dev --silent
 
-  if pm2 id dashboard > /dev/null 2>&1; then
-    pm2 reload ecosystem.config.cjs --only dashboard --update-env
-  else
-    pm2 start ecosystem.config.cjs --only dashboard
-  fi
+  # Return the pm2 status of an app, or empty string if not registered.
+  app_status() {
+    pm2 jlist | node -e "const d=JSON.parse(require('fs').readFileSync(0));const a=d.find(x=>x.name==='\$1');process.stdout.write(a?a.pm2_env.status:'');"
+  }
 
-  if $RESTART_BOT; then
-    if pm2 id job-alert-bot > /dev/null 2>&1; then
-      pm2 reload ecosystem.config.cjs --only job-alert-bot --update-env
+  # Reload an app, or if it's errored/stopped, delete and start fresh so env
+  # changes take effect (pm2 reload --update-env doesn't always apply to errored procs).
+  deploy_app() {
+    local name="\$1"
+    local status
+    status=\$(app_status "\$name")
+    if [ -z "\$status" ]; then
+      pm2 start ecosystem.config.cjs --only "\$name"
+    elif [ "\$status" = "errored" ] || [ "\$status" = "stopped" ]; then
+      echo "  ⚠ \$name was \$status — deleting and starting fresh"
+      pm2 delete "\$name"
+      pm2 start ecosystem.config.cjs --only "\$name"
     else
-      pm2 start ecosystem.config.cjs --only job-alert-bot
+      pm2 reload ecosystem.config.cjs --only "\$name" --update-env
     fi
+  }
+
+  # Fail loudly if an app isn't online after a short settle time.
+  verify_app() {
+    local name="\$1"
+    sleep 3
+    local status
+    status=\$(app_status "\$name")
+    if [ "\$status" != "online" ]; then
+      echo "✗ \$name status: '\$status' — deploy FAILED"
+      pm2 logs "\$name" --lines 20 --nostream --err || true
+      exit 1
+    fi
+    echo "  ✓ \$name online"
+  }
+
+  deploy_app dashboard
+  if $RESTART_BOT; then
+    deploy_app job-alert-bot
   fi
 
   pm2 save --force
+
+  echo "→ Verifying …"
+  verify_app dashboard
+  if $RESTART_BOT; then
+    verify_app job-alert-bot
+  fi
+
   echo "✓ Deploy complete"
 EOF
