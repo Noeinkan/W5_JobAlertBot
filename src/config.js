@@ -206,6 +206,7 @@ export function getConfiguredSources() {
     jobserve: true,
     construction_enquirer: true,
     cvlibrary: true,
+    risetechnical: true,
   };
 }
 
@@ -250,5 +251,6 @@ export function getSourceLabel(source) {
     jobserve: 'JobServe',
     construction_enquirer: 'Construction Enquirer',
     cvlibrary: 'CV-Library',
+    risetechnical: 'Rise Technical',
   }[source] ?? source;
 }

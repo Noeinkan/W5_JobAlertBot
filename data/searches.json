@@ -2,7 +2,7 @@
   "defaults": {
     "location": "London",
     "distance_from_location": 30,
-    "allowed_sources": ["adzuna", "reed", "serper", "linkedin", "jooble", "careerjet", "guardian", "jobserve", "construction_enquirer", "cvlibrary"],
+    "allowed_sources": ["adzuna", "reed", "serper", "linkedin", "jooble", "careerjet", "guardian", "jobserve", "construction_enquirer", "cvlibrary", "risetechnical"],
     "exclude_keywords": ["graduate", "junior", "trainee", "apprentice", "entry level"],
     "enrich_jobs": true
   },
@@ -58,16 +58,18 @@
     },
     {
       "id": "iso_19650",
-      "name": "ISO 19650",
+      "name": "ISO 19650 (UK-wide)",
       "keywords": "ISO 19650",
-      "location": "London",
+      "location": "United Kingdom",
+      "distance_from_location": 150,
       "min_salary": 75000
     },
     {
       "id": "head_of_bim",
-      "name": "Head of BIM",
+      "name": "Head of BIM (UK-wide)",
       "keywords": "Head of BIM",
-      "location": "London",
+      "location": "United Kingdom",
+      "distance_from_location": 150,
       "min_salary": 90000
     },
     {
@@ -131,6 +133,14 @@
         "serper": { "location": "Netherlands", "gl": "nl" },
         "linkedin": { "location": "Netherlands" }
       }
+    },
+    {
+      "id": "risetechnical_site",
+      "name": "Rise Technical — Google site search",
+      "keywords": "site:risetechnical.com BIM OR \"ISO 19650\" OR \"Digital Construction\" OR \"Information Manager\"",
+      "location": "United Kingdom",
+      "distance_from_location": 150,
+      "allowed_sources": ["serper"]
     }
   ]
 }

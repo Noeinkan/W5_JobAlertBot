@@ -33,6 +33,7 @@ import { joobleSource } from './sources/jooble.js';
 import { jobserveSource } from './sources/jobserve.js';
 import { linkedinSource } from './sources/linkedin.js';
 import { reedSource } from './sources/reed.js';
+import { risetechnicalSource } from './sources/risetechnical.js';
 import { serperSource } from './sources/serper.js';
 import { logger } from './utils/logger.js';
 import { jobMatchesSearch, sourceAllowed } from './utils/search.js';
@@ -54,6 +55,7 @@ const sourceClients = [
   jobserveSource,
   constructionEnquirerSource,
   cvlibrarySource,
+  risetechnicalSource,
 ];
 
 let isRunInProgress = false;
