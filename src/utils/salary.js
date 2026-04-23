@@ -11,7 +11,7 @@ function cleanNumber(value) {
   return Number.isFinite(normalized) ? normalized : null;
 }
 
-function parseAmount(digits, suffix) {
+export function parseAmount(digits, suffix) {
   const base = cleanNumber(digits);
   if (base == null) return null;
   return /k/i.test(String(suffix ?? '')) ? base * 1000 : base;

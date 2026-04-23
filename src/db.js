@@ -12,6 +12,17 @@ const JOB_COLUMN_ADDITIONS = [
   ['seniority_passed', 'INTEGER'],
   ['salary_passed', 'INTEGER'],
   ['filter_reason', 'TEXT'],
+  ['remote_type', 'TEXT'],
+  ['contract_length_months', 'INTEGER'],
+  ['sectors', 'TEXT'],
+  ['clearances', 'TEXT'],
+  ['tech_tools', 'TEXT'],
+  ['years_experience', 'INTEGER'],
+  ['has_bonus', 'INTEGER'],
+  ['bonus_percent', 'INTEGER'],
+  ['car_allowance', 'REAL'],
+  ['pension_percent', 'INTEGER'],
+  ['has_equity', 'INTEGER'],
 ];
 
 function createSchema(db) {
@@ -83,7 +94,18 @@ function createStatements(db) {
         rag_reason,
         seniority_passed,
         salary_passed,
-        filter_reason
+        filter_reason,
+        remote_type,
+        contract_length_months,
+        sectors,
+        clearances,
+        tech_tools,
+        years_experience,
+        has_bonus,
+        bonus_percent,
+        car_allowance,
+        pension_percent,
+        has_equity
       ) VALUES (
         @external_id,
         @source,
@@ -104,8 +126,44 @@ function createStatements(db) {
         @rag_reason,
         @seniority_passed,
         @salary_passed,
-        @filter_reason
+        @filter_reason,
+        @remote_type,
+        @contract_length_months,
+        @sectors,
+        @clearances,
+        @tech_tools,
+        @years_experience,
+        @has_bonus,
+        @bonus_percent,
+        @car_allowance,
+        @pension_percent,
+        @has_equity
       )
+    `),
+    updateExtractionStatement: db.prepare(`
+      UPDATE jobs
+      SET
+        salary_min = @salary_min,
+        salary_max = @salary_max,
+        salary_text = @salary_text,
+        is_contract = @is_contract,
+        remote_type = @remote_type,
+        contract_length_months = @contract_length_months,
+        sectors = @sectors,
+        clearances = @clearances,
+        tech_tools = @tech_tools,
+        years_experience = @years_experience,
+        has_bonus = @has_bonus,
+        bonus_percent = @bonus_percent,
+        car_allowance = @car_allowance,
+        pension_percent = @pension_percent,
+        has_equity = @has_equity
+      WHERE id = @id
+    `),
+    selectJobsForBackfillStatement: db.prepare(`
+      SELECT id, title, description, salary_min, salary_max, salary_text, is_contract
+      FROM jobs
+      WHERE description IS NOT NULL AND description != ''
     `),
     markNotifiedStatement: db.prepare(`
       UPDATE jobs
@@ -219,10 +277,44 @@ export function createDatabase(databasePath = appConfig.dbPath) {
         seniority_passed: job.seniorityPassed == null ? null : job.seniorityPassed ? 1 : 0,
         salary_passed: job.salaryPassed == null ? null : job.salaryPassed ? 1 : 0,
         filter_reason: job.filterReason ?? null,
+        remote_type: job.remoteType ?? null,
+        contract_length_months: Number.isFinite(job.contractLengthMonths) ? job.contractLengthMonths : null,
+        sectors: Array.isArray(job.sectors) && job.sectors.length ? job.sectors.join('|') : null,
+        clearances: Array.isArray(job.clearances) && job.clearances.length ? job.clearances.join('|') : null,
+        tech_tools: Array.isArray(job.techTools) && job.techTools.length ? job.techTools.join('|') : null,
+        years_experience: Number.isFinite(job.yearsExperience) ? job.yearsExperience : null,
+        has_bonus: job.hasBonus ? 1 : 0,
+        bonus_percent: Number.isFinite(job.bonusPercent) ? job.bonusPercent : null,
+        car_allowance: Number.isFinite(job.carAllowance) ? job.carAllowance : null,
+        pension_percent: Number.isFinite(job.pensionPercent) ? job.pensionPercent : null,
+        has_equity: job.hasEquity ? 1 : 0,
       };
 
       const result = statements.insertJobStatement.run(normalized);
       return result.changes > 0;
+    },
+    updateExtraction(id, extraction) {
+      statements.updateExtractionStatement.run({
+        id,
+        salary_min: Number.isFinite(extraction.salaryMin) ? extraction.salaryMin : null,
+        salary_max: Number.isFinite(extraction.salaryMax) ? extraction.salaryMax : null,
+        salary_text: extraction.salaryText ?? null,
+        is_contract: extraction.isContract ? 1 : 0,
+        remote_type: extraction.remoteType ?? null,
+        contract_length_months: Number.isFinite(extraction.contractLengthMonths) ? extraction.contractLengthMonths : null,
+        sectors: Array.isArray(extraction.sectors) && extraction.sectors.length ? extraction.sectors.join('|') : null,
+        clearances: Array.isArray(extraction.clearances) && extraction.clearances.length ? extraction.clearances.join('|') : null,
+        tech_tools: Array.isArray(extraction.techTools) && extraction.techTools.length ? extraction.techTools.join('|') : null,
+        years_experience: Number.isFinite(extraction.yearsExperience) ? extraction.yearsExperience : null,
+        has_bonus: extraction.hasBonus ? 1 : 0,
+        bonus_percent: Number.isFinite(extraction.bonusPercent) ? extraction.bonusPercent : null,
+        car_allowance: Number.isFinite(extraction.carAllowance) ? extraction.carAllowance : null,
+        pension_percent: Number.isFinite(extraction.pensionPercent) ? extraction.pensionPercent : null,
+        has_equity: extraction.hasEquity ? 1 : 0,
+      });
+    },
+    getJobsWithDescription() {
+      return statements.selectJobsForBackfillStatement.all();
     },
     markJobNotified(job) {
       statements.markNotifiedStatement.run(job.source, job.title.trim(), (job.company ?? '').trim());
@@ -292,4 +384,12 @@ export function getJobsToday() {
 
 export function getPendingJobs() {
   return defaultDatabase.getPendingJobs();
+}
+
+export function updateExtraction(id, extraction) {
+  return defaultDatabase.updateExtraction(id, extraction);
+}
+
+export function getJobsWithDescription() {
+  return defaultDatabase.getJobsWithDescription();
 }

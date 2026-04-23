@@ -23,6 +23,17 @@ const HEADERS = [
   'rag_rating',
   'rag_score',
   'rag_reason',
+  'remote_type',
+  'contract_length_months',
+  'sectors',
+  'clearances',
+  'tech_tools',
+  'years_experience',
+  'has_bonus',
+  'bonus_percent',
+  'car_allowance',
+  'pension_percent',
+  'has_equity',
 ];
 
 function escape(value) {

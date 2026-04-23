@@ -7,9 +7,10 @@
   "scripts": {
     "start": "node src/index.js",
     "once": "node src/index.js --once",
-    "check": "node --check src/index.js && node --check src/config.js && node --check src/db.js && node --check src/discord.js && node --check src/sources/adzuna.js && node --check src/sources/careerjet.js && node --check src/sources/construction_enquirer.js && node --check src/sources/cvlibrary.js && node --check src/sources/guardian.js && node --check src/sources/jobserve.js && node --check src/sources/jooble.js && node --check src/sources/linkedin.js && node --check src/sources/reed.js && node --check src/sources/risetechnical.js && node --check src/sources/serper.js && node --check src/utils/enrich.js && node --check src/utils/extractors.js && node --check src/utils/http.js && node --check src/utils/logger.js && node --check src/utils/relevance.js && node --check src/utils/salary.js && node --check src/utils/search.js && node --check src/utils/seniority.js",
+    "check": "node --check src/index.js && node --check src/config.js && node --check src/db.js && node --check src/discord.js && node --check src/sources/adzuna.js && node --check src/sources/careerjet.js && node --check src/sources/construction_enquirer.js && node --check src/sources/cvlibrary.js && node --check src/sources/guardian.js && node --check src/sources/jobserve.js && node --check src/sources/jooble.js && node --check src/sources/linkedin.js && node --check src/sources/reed.js && node --check src/sources/risetechnical.js && node --check src/sources/serper.js && node --check src/utils/enrich.js && node --check src/utils/extractors.js && node --check src/utils/http.js && node --check src/utils/logger.js && node --check src/utils/relevance.js && node --check src/utils/salary.js && node --check src/utils/search.js && node --check src/utils/seniority.js && node --check scripts/backfill-extractors.js",
     "test": "node --test",
-    "dashboard": "node src/dashboard.js --port 3099"
+    "dashboard": "node src/dashboard.js --port 3099",
+    "backfill:extractors": "node scripts/backfill-extractors.js"
   },
   "engines": {
     "node": ">=20"
