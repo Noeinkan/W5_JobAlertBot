@@ -216,9 +216,13 @@ function aggregate(rows) {
     else              return '>100k';
   };
   for (const v of salaryVals) salaryBuckets[bucketOf(v)]++;
+
+  const byContract = { Perm: 0, Contract: 0 };
   for (const r of rows) {
     const n = Number(r.salary_min);
     r.salaryBucket = (n && n > 0) ? bucketOf(n) : '';
+    r.jobType = r.is_contract === 'yes' ? 'Contract' : 'Perm';
+    byContract[r.jobType]++;
   }
 
   return {
@@ -227,9 +231,11 @@ function aggregate(rows) {
     alreadySeen: rows.filter(r => r.outcome === 'already_seen').length,
     filtered:    rows.filter(r => r.outcome?.startsWith('filtered')).length,
     salaryCount: salaryVals.length,
+    contractCount: byContract.Contract,
+    permCount:     byContract.Perm,
     runAt:       rows[0]?.run_at  ?? '',
     trigger:     rows[0]?.trigger ?? '',
-    byOutcome, bySource, bySearch, byRag, salaryBuckets,
+    byOutcome, bySource, bySearch, byRag, salaryBuckets, byContract,
     contractRates,
     analytics: deriveAnalytics(rows, byOutcome),
     rows,
@@ -402,13 +408,30 @@ const HTML = /* html */`<!DOCTYPE html>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-body{font-family:system-ui,sans-serif;background:#0f1117;color:#e2e8f0;min-height:100vh;overflow-x:hidden}
+html,body{height:100vh;overflow:hidden}
+body{font-family:system-ui,sans-serif;background:#0f1117;color:#e2e8f0;display:flex;flex-direction:column}
 header{background:#1a1d27;padding:.8rem 1.25rem;display:flex;align-items:center;gap:.75rem;border-bottom:1px solid #2d3148;position:sticky;top:0;z-index:100;flex-wrap:wrap}
 header h1{font-size:1rem;font-weight:600;color:#a5b4fc;flex:1;min-width:220px}
 select{background:#252836;color:#e2e8f0;border:1px solid #3d4268;border-radius:6px;padding:.35rem .7rem;font-size:.85rem;cursor:pointer;max-width:min(100%,420px);min-width:210px}
 select:focus{outline:2px solid #6366f1}
 #meta{font-size:.78rem;color:#64748b;white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis}
-main{padding:1rem 1.25rem 1.5rem;display:grid;gap:.85rem}
+main{padding:.85rem 1rem;display:flex;flex-direction:column;gap:.65rem;flex:1;min-height:0;overflow:hidden}
+.section[data-section="table"]{flex:1 1 0;min-height:220px;display:flex;flex-direction:column}
+.section[data-section="table"] .section-body{flex:1;min-height:0;display:flex;flex-direction:column;padding:.55rem .7rem}
+.section[data-section="table"] .table-card{flex:1;min-height:0;display:flex;flex-direction:column;background:transparent;border:none;padding:0}
+.section[data-section="table"] .table-wrap{flex:1;min-height:0;max-height:none}
+.section[data-section="overview"]{flex:0 1 auto}
+.section[data-section="overview"] .section-body{max-height:40vh;overflow-y:auto;overflow-x:hidden}
+.section[data-section="overview"] .chart-wrap{height:140px}
+.section[data-section="overview"] .chart-wrap.tall{height:170px}
+.section[data-section="advanced"]{flex:0 1 auto}
+.section[data-section="advanced"] .section-body{max-height:45vh;overflow-y:auto;overflow-x:hidden}
+.section[data-section="advanced"] .chart-wrap{height:170px}
+.section[data-section="advanced"] .chart-wrap.tall{height:210px}
+.section[data-section="advanced"] .chart-wrap.xtall{height:250px}
+.section-toggle-none .chev{display:none}
+.section-toggle-none .section-header{cursor:default}
+.section-toggle-none .section-header:hover{background:#181b25}
 
 /* ── Cross-filter bar ── */
 .filter-bar{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;background:#161a29;border:1px solid #222741;border-radius:8px;padding:.45rem .65rem;position:sticky;top:52px;z-index:90;box-shadow:0 2px 8px rgba(0,0,0,.35)}
@@ -438,9 +461,9 @@ main{padding:1rem 1.25rem 1.5rem;display:grid;gap:.85rem}
 .section-body>.charts-grid{gap:.85rem}
 
 .kpi-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:.75rem}
-.kpi{background:#1a1d27;border:1px solid #2d3148;border-radius:10px;padding:.9rem 1.1rem}
-.kpi .val{font-size:1.9rem;font-weight:700;line-height:1}
-.kpi .lbl{font-size:.72rem;color:#94a3b8;margin-top:.3rem;text-transform:uppercase;letter-spacing:.05em}
+.kpi{background:#1a1d27;border:1px solid #2d3148;border-radius:8px;padding:.6rem .8rem}
+.kpi .val{font-size:1.5rem;font-weight:700;line-height:1}
+.kpi .lbl{font-size:.68rem;color:#94a3b8;margin-top:.2rem;text-transform:uppercase;letter-spacing:.05em}
 .kpi.green  .val{color:#4ade80}
 .kpi.amber  .val{color:#fbbf24}
 .kpi.red    .val{color:#f87171}
@@ -553,7 +576,9 @@ tbody td a:hover{text-decoration:underline}
 #botStateBadge.done   {background:#14532d;color:#4ade80}
 #botStateBadge.error  {background:#3b1111;color:#f87171}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.55}}
-#logPanel{background:#0b0d12;border-bottom:1px solid #2d3148;padding:.6rem 1.25rem;font-family:monospace;font-size:.73rem;color:#94a3b8;max-height:200px;overflow-y:auto;white-space:pre-wrap;word-break:break-all;display:none}
+#logPanel{background:#0b0d12;border-bottom:1px solid #2d3148;padding:.6rem 1.25rem;font-family:monospace;font-size:.73rem;color:#94a3b8;max-height:160px;overflow-y:auto;white-space:pre-wrap;word-break:break-all;display:none;flex-shrink:0}
+#trendSection{flex-shrink:0}
+#trendSection .chart-wrap.tall{height:150px}
 @media (max-width: 1100px){
   header{padding:.7rem 1rem}
   header h1{flex-basis:100%;min-width:0}
@@ -622,6 +647,7 @@ const PALETTE = ['#6366f1','#22d3ee','#f59e0b','#10b981','#ec4899','#a78bfa','#f
 const DOW_LABELS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 const HELP_TEXT = {
   outcome: 'What: Distribution of row outcomes in this selected CSV. Why: Quickly see signal vs noise. Read: More notified with fewer filtered outcomes is better.',
+  contractSplit: 'What: Split of rows between permanent roles and contractor roles. Why: See at a glance how much of the run is inside/outside IR35 territory. Read: Click a slice to narrow the table to just perm or just contract.',
   rag: 'What: Green/Amber/Red split for rated rows. Why: Shows relevance quality mix. Read: More Green usually means higher-fit alerts.',
   source: 'What: Total rows by source in the selected CSV. Why: Detect source dominance. Read: Very skewed sources may mask other opportunities.',
   search: 'What: Rows by configured search. Why: Compare query yield. Read: High volume with low notify suggests noisy search terms.',
@@ -773,6 +799,7 @@ const CROSS_FILTER_LABELS = {
   salaryBucket: 'Salary band',
   rateType: 'Rate type',
   is_contract: 'Contract',
+  jobType: 'Job type',
 };
 let crossFilters = {}; // { key: Set<string> }
 
@@ -832,6 +859,11 @@ function markActiveCards() {
     const on = crossFilters.outcome && crossFilters.outcome.has(v);
     el.classList.toggle('filter-active', !!on);
   });
+  document.querySelectorAll('.kpi[data-kpi-jobtype]').forEach(el => {
+    const v = el.dataset.kpiJobtype;
+    const on = crossFilters.jobType && crossFilters.jobType.has(v);
+    el.classList.toggle('filter-active', !!on);
+  });
   const kpiFiltered = document.querySelector('.kpi[data-kpi="filtered"]');
   if (kpiFiltered) {
     const s = crossFilters.outcome;
@@ -858,12 +890,14 @@ function updateKpisFromVisible() {
   const notified = rows.filter(r => r.outcome === 'new').length;
   const seen     = rows.filter(r => r.outcome === 'already_seen').length;
   const filtered = rows.filter(r => (r.outcome || '').startsWith('filtered')).length;
-  const salCount = rows.filter(r => Number(r.salary_min) > 0).length;
+  const contract = rows.filter(r => r.jobType === 'Contract').length;
+  const perm     = rows.filter(r => r.jobType === 'Perm').length;
   if ($('kpiTotal'))    $('kpiTotal').textContent    = total;
   if ($('kpiNotified')) $('kpiNotified').textContent = notified;
   if ($('kpiSeen'))     $('kpiSeen').textContent     = seen;
   if ($('kpiFiltered')) $('kpiFiltered').textContent = filtered;
-  if ($('kpiSalary'))   $('kpiSalary').textContent   = salCount;
+  if ($('kpiContract')) $('kpiContract').textContent = contract;
+  if ($('kpiPerm'))     $('kpiPerm').textContent     = perm;
 }
 
 // ── Collapsible section persistence ──────────────────────────────────────────
@@ -877,6 +911,7 @@ function saveSectionState(state) {
 function initSectionToggles() {
   const state = loadSectionState();
   document.querySelectorAll('.section').forEach(section => {
+    if (section.classList.contains('section-toggle-none')) return;
     const id = section.dataset.section;
     if (id && id in state) section.classList.toggle('open', !!state[id]);
     const header = section.querySelector('.section-header');
@@ -1092,11 +1127,12 @@ function render(data) {
   const main = document.getElementById('main');
   main.innerHTML = \`
     <div class="kpi-row">
-      <div class="kpi blue static">                                                                       <div class="val" id="kpiTotal">\${data.total}</div>         <div class="lbl">Total fetched</div></div>
-      <div class="kpi green"  data-kpi-outcome="new"          title="Click to filter table by Notified">     <div class="val" id="kpiNotified">\${data.notified}</div>   <div class="lbl">Notified</div></div>
-      <div class="kpi amber"  data-kpi-outcome="already_seen" title="Click to filter table by Already seen"> <div class="val" id="kpiSeen">\${data.alreadySeen}</div>    <div class="lbl">Already seen</div></div>
-      <div class="kpi red"    data-kpi="filtered"             title="Click to filter by any filtered_*">     <div class="val" id="kpiFiltered">\${data.filtered}</div>   <div class="lbl">Filtered</div></div>
-      <div class="kpi purple static">                                                                      <div class="val" id="kpiSalary">\${data.salaryCount}</div>  <div class="lbl">With salary</div></div>
+      <div class="kpi blue static"                                                                  title="Total rows in this CSV">          <div class="val" id="kpiTotal">\${data.total}</div>         <div class="lbl">Total fetched</div></div>
+      <div class="kpi green"  data-kpi-outcome="new"           title="Click to filter table by Notified">                                  <div class="val" id="kpiNotified">\${data.notified}</div>   <div class="lbl">Notified</div></div>
+      <div class="kpi amber"  data-kpi-outcome="already_seen"  title="Click to filter table by Already seen">                              <div class="val" id="kpiSeen">\${data.alreadySeen}</div>    <div class="lbl">Already seen</div></div>
+      <div class="kpi red"    data-kpi="filtered"              title="Click to filter by any filtered_* outcome">                          <div class="val" id="kpiFiltered">\${data.filtered}</div>   <div class="lbl">Filtered</div></div>
+      <div class="kpi"        data-kpi-jobtype="Contract"      style="--k:#38bdf8" title="Click to filter table by Contract roles">        <div class="val" id="kpiContract" style="color:#38bdf8">\${data.contractCount}</div> <div class="lbl">Contract</div></div>
+      <div class="kpi"        data-kpi-jobtype="Perm"          style="--k:#94a3b8" title="Click to filter table by Permanent roles">       <div class="val" id="kpiPerm"     style="color:#94a3b8">\${data.permCount}</div>     <div class="lbl">Permanent</div></div>
     </div>
 
     <div id="filterBar" class="filter-bar empty"></div>
@@ -1105,11 +1141,12 @@ function render(data) {
       <div class="section-header">
         <span class="chev">▶</span>
         <h2>Overview</h2>
-        <span class="section-meta">6 visuals · click a slice to filter the table</span>
+        <span class="section-meta">7 visuals · click any slice to cross-filter the table</span>
       </div>
       <div class="section-body">
         <div class="charts-grid">
           <div class="card" data-filter-key="outcome">\${cardTitle('Outcome breakdown', 'outcome')}<div class="chart-wrap"><canvas id="cOutcome"></canvas></div></div>
+          <div class="card" data-filter-key="jobType">\${cardTitle('Perm vs Contract', 'contractSplit')}<div class="chart-wrap"><canvas id="cContract"></canvas></div></div>
           <div class="card" data-filter-key="rag_rating">\${cardTitle('RAG rating (rated jobs)', 'rag')}<div class="chart-wrap"><canvas id="cRag"></canvas></div></div>
           <div class="card" data-filter-key="source">\${cardTitle('Jobs by source', 'source')}<div class="chart-wrap tall"><canvas id="cSource"></canvas></div></div>
           <div class="card" data-filter-key="search_name">\${cardTitle('Jobs by search', 'search')}<div class="chart-wrap tall"><canvas id="cSearch"></canvas></div></div>
@@ -1119,11 +1156,11 @@ function render(data) {
       </div>
     </section>
 
-    <section class="section" data-section="quality">
+    <section class="section" data-section="advanced">
       <div class="section-header">
         <span class="chev">▶</span>
-        <h2>Source &amp; search quality</h2>
-        <span class="section-meta">4 visuals · reliability and filter drivers</span>
+        <h2>Advanced analytics</h2>
+        <span class="section-meta">source quality, sequence, SPC, schedule and pipeline docs</span>
       </div>
       <div class="section-body">
         <div class="charts-grid">
@@ -1131,35 +1168,13 @@ function render(data) {
           <div class="card" data-filter-key="source">\${cardTitle('Source reliability snapshot', 'reliability')}<div class="chart-wrap"><canvas id="cReliability"></canvas></div></div>
           <div class="card" data-filter-key="search_name">\${cardTitle('Search effectiveness heatmap', 'searchHeatmap')}<div class="chart-wrap xtall"><canvas id="cSearchHeat"></canvas></div></div>
           <div class="card" data-filter-key="outcome">\${cardTitle('Filter pareto', 'pareto')}<div class="chart-wrap tall"><canvas id="cPareto"></canvas></div></div>
-        </div>
-      </div>
-    </section>
-
-    <section class="section" data-section="timing">
-      <div class="section-header">
-        <span class="chev">▶</span>
-        <h2>Throughput &amp; timing</h2>
-        <span class="section-meta">5 visuals · sequence, SPC and schedule</span>
-      </div>
-      <div class="section-body">
-        <div class="charts-grid">
           <div class="card">\${cardTitle('Outcomes over sequence', 'outcomesOverTime')}<div class="chart-wrap tall"><canvas id="cOutcomeTime"></canvas></div></div>
           <div class="card">\${cardTitle('SPC control view (notified)', 'control')}<div class="chart-wrap"><canvas id="cControl"></canvas></div></div>
           <div class="card">\${cardTitle('Run throughput view', 'throughput')}<div class="chart-wrap"><canvas id="cThroughput"></canvas></div></div>
           <div class="card">\${cardTitle('Schedule heatmap', 'schedule')}<div class="chart-wrap xtall"><canvas id="cSchedule"></canvas></div></div>
           <div class="card" data-filter-key="outcome">\${cardTitle('Relevance vs outcome scatter', 'scatter')}<div class="chart-wrap"><canvas id="cScatter"></canvas></div></div>
         </div>
-      </div>
-    </section>
-
-    <section class="section" data-section="about">
-      <div class="section-header">
-        <span class="chev">▶</span>
-        <h2>About the data</h2>
-        <span class="section-meta">pipeline diagram and glossary</span>
-      </div>
-      <div class="section-body">
-        <div class="diagram-card">
+        <div class="diagram-card" style="margin-top:.85rem">
           <div class="diagram-header">
             <span class="diagram-title">Pipeline + data model (selected csv)</span>
             <span class="scope-badge">Scope: \${escHtml(selectedFile)}</span>
@@ -1189,11 +1204,11 @@ function render(data) {
       </div>
     </section>
 
-    <section class="section open" data-section="table">
+    <section class="section open section-toggle-none" data-section="table">
       <div class="section-header">
         <span class="chev">▶</span>
         <h2>Data table</h2>
-        <span class="section-meta">filterable grid · use chart slices or chips to narrow down</span>
+        <span class="section-meta" id="tableSectionMeta">always visible · chart slices and chips cross-filter it</span>
       </div>
       <div class="section-body">
         \${buildTableHTML(tableRows)}
@@ -1208,6 +1223,19 @@ function render(data) {
     backgroundColor: outLabels.map(l => OUTCOME_COLORS[l] || '#6366f1'),
     borderWidth: 2, borderColor: '#1a1d27',
   }], { onPick: ({ label }) => toggleCrossFilter('outcome', label) });
+
+  const contractLabels = ['Perm', 'Contract'];
+  const contractCounts = [data.byContract?.Perm || 0, data.byContract?.Contract || 0];
+  if (contractCounts[0] || contractCounts[1]) {
+    mkChart('cContract', 'doughnut', contractLabels, [{
+      data: contractCounts,
+      backgroundColor: ['#64748b', '#38bdf8'],
+      borderWidth: 2, borderColor: '#1a1d27',
+    }], { onPick: ({ label }) => toggleCrossFilter('jobType', label) });
+  } else {
+    document.getElementById('cContract').closest('.card')
+      .insertAdjacentHTML('beforeend', '<p style="color:#64748b;font-size:.82rem;margin-top:.5rem">No rows in this run</p>');
+  }
 
   const ragLabels = Object.keys(data.byRag);
   if (ragLabels.length) {
@@ -1385,9 +1413,12 @@ function render(data) {
     }
   }
 
-  // KPI clicks — filter table by outcome
+  // KPI clicks — filter table by outcome / jobType
   document.querySelectorAll('.kpi[data-kpi-outcome]').forEach(el => {
     el.addEventListener('click', () => toggleCrossFilter('outcome', el.dataset.kpiOutcome));
+  });
+  document.querySelectorAll('.kpi[data-kpi-jobtype]').forEach(el => {
+    el.addEventListener('click', () => toggleCrossFilter('jobType', el.dataset.kpiJobtype));
   });
   const kpiFiltered = document.querySelector('.kpi[data-kpi="filtered"]');
   if (kpiFiltered) {
