@@ -25,14 +25,15 @@ done
 echo "→ Preparing remote directory …"
 ssh "$SERVER" "mkdir -p $REMOTE/logs $REMOTE/data"
 
-# ── 2. Upload source files ────────────────────────────────────────────────────
+# ── 2. Upload source files in a single tar stream ────────────────────────────
+# One SSH handshake for the whole tree instead of six separate scp calls.
+# Excludes local SQLite files so we never clobber the production jobs DB.
 echo "→ Uploading code …"
-scp -r "$LOCAL/src"                  "$SERVER:$REMOTE/"
-scp -r "$LOCAL/data"                 "$SERVER:$REMOTE/"
-scp -r "$LOCAL/test"                 "$SERVER:$REMOTE/"
-scp    "$LOCAL/package.json"         "$SERVER:$REMOTE/"
-scp    "$LOCAL/package-lock.json"    "$SERVER:$REMOTE/"
-scp    "$LOCAL/ecosystem.config.cjs" "$SERVER:$REMOTE/"
+tar -C "$LOCAL" \
+    --exclude='data/*.db' --exclude='data/*.db-*' \
+    -cf - \
+    src data test package.json package-lock.json ecosystem.config.cjs \
+  | ssh "$SERVER" "tar -C $REMOTE -xf -"
 
 # ── 3. Optionally upload .env ─────────────────────────────────────────────────
 if $UPLOAD_ENV; then
@@ -46,7 +47,14 @@ ssh "$SERVER" bash <<EOF
   set -e
   cd "$REMOTE"
 
-  npm ci --omit=dev --silent
+  # Skip npm ci when package-lock.json hasn't changed — saves 20–60s per deploy.
+  if [ ! -f .package-lock.sha256 ] || ! sha256sum -c .package-lock.sha256 --status 2>/dev/null; then
+    echo "  → package-lock.json changed, running npm ci …"
+    npm ci --omit=dev --silent --no-audit --no-fund
+    sha256sum package-lock.json > .package-lock.sha256
+  else
+    echo "  → deps unchanged, skipping npm ci"
+  fi
 
   # Return the pm2 status of an app, or empty string if not registered.
   app_status() {
@@ -70,18 +78,18 @@ ssh "$SERVER" bash <<EOF
     fi
   }
 
-  # Fail loudly if an app isn't online after a short settle time.
+  # Poll up to ~3s for online status instead of a flat sleep 3.
   verify_app() {
     local name="\$1"
-    sleep 3
-    local status
-    status=\$(app_status "\$name")
-    if [ "\$status" != "online" ]; then
-      echo "✗ \$name status: '\$status' — deploy FAILED"
-      pm2 logs "\$name" --lines 20 --nostream --err || true
-      exit 1
-    fi
-    echo "  ✓ \$name online"
+    local status=""
+    for _ in 1 2 3 4 5 6; do
+      status=\$(app_status "\$name")
+      [ "\$status" = "online" ] && { echo "  ✓ \$name online"; return 0; }
+      sleep 0.5
+    done
+    echo "✗ \$name status: '\$status' — deploy FAILED"
+    pm2 logs "\$name" --lines 20 --nostream --err || true
+    exit 1
   }
 
   deploy_app dashboard
