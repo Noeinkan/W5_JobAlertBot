@@ -11,6 +11,12 @@ function cleanNumber(value) {
   return Number.isFinite(normalized) ? normalized : null;
 }
 
+function parseAmount(digits, suffix) {
+  const base = cleanNumber(digits);
+  if (base == null) return null;
+  return /k/i.test(String(suffix ?? '')) ? base * 1000 : base;
+}
+
 function detectUnit(text = '') {
   const normalized = String(text).toLowerCase();
 
@@ -27,18 +33,20 @@ function detectUnit(text = '') {
 
 function findRange(text = '') {
   const patterns = [
-    /£\s?([\d,]+)\s*(?:-|to)\s*£\s?([\d,]+)\s*(per\s*day|\/day|daily|day\s*rate|per\s*annum|per\s*year|\/year|pa\b|p\.a\.)?/i,
-    /([\d,]+)\s*(?:-|to)\s*([\d,]+)\s*(per\s*day|\/day|daily|day\s*rate|per\s*annum|per\s*year|\/year|pa\b|p\.a\.)?/i,
+    /£\s?([\d,]+(?:\.\d+)?)\s*(k)?\s*(?:-|to)\s*£\s?([\d,]+(?:\.\d+)?)\s*(k)?\s*(per\s*day|\/day|daily|day\s*rate|per\s*annum|per\s*year|\/year|pa\b|p\.a\.)?/i,
+    /([\d,]+(?:\.\d+)?)\s*(k)?\s*(?:-|to)\s*([\d,]+(?:\.\d+)?)\s*(k)?\s*(per\s*day|\/day|daily|day\s*rate|per\s*annum|per\s*year|\/year|pa\b|p\.a\.)?/i,
   ];
 
   for (const pattern of patterns) {
     const match = String(text).match(pattern);
 
     if (match) {
+      const minSuffix = match[2];
+      const maxSuffix = match[4] ?? minSuffix;
       return {
-        min: cleanNumber(match[1]),
-        max: cleanNumber(match[2]),
-        unit: detectUnit(match[3] ?? text),
+        min: parseAmount(match[1], minSuffix),
+        max: parseAmount(match[3], maxSuffix),
+        unit: detectUnit(match[5] ?? text),
       };
     }
   }
@@ -47,17 +55,69 @@ function findRange(text = '') {
 }
 
 function findSingle(text = '') {
-  const match = String(text).match(/£\s?([\d,]+)\s*(per\s*day|\/day|daily|day\s*rate|per\s*annum|per\s*year|\/year|pa\b|p\.a\.)?/i);
+  const match = String(text).match(/£\s?([\d,]+(?:\.\d+)?)\s*(k)?\s*(per\s*day|\/day|daily|day\s*rate|per\s*annum|per\s*year|\/year|pa\b|p\.a\.)?/i);
 
   if (!match) {
     return null;
   }
 
   return {
-    min: cleanNumber(match[1]),
+    min: parseAmount(match[1], match[2]),
     max: null,
-    unit: detectUnit(match[2] ?? text),
+    unit: detectUnit(match[3] ?? text),
   };
+}
+
+function findBetween(text = '') {
+  const match = String(text).match(
+    /between\s+£\s?([\d,]+(?:\.\d+)?)\s*(k)?\s+and\s+£?\s?([\d,]+(?:\.\d+)?)\s*(k)?/i,
+  );
+  if (!match) return null;
+  const minSuffix = match[2];
+  const maxSuffix = match[4] ?? minSuffix;
+  return {
+    min: parseAmount(match[1], minSuffix),
+    max: parseAmount(match[3], maxSuffix),
+    unit: detectUnit(text),
+  };
+}
+
+function findUpTo(text = '') {
+  const match = String(text).match(/\bup\s*to\s*£\s?([\d,]+(?:\.\d+)?)\s*(k)?/i);
+  if (!match) return null;
+  return {
+    min: null,
+    max: parseAmount(match[1], match[2]),
+    unit: detectUnit(text),
+  };
+}
+
+function findFrom(text = '') {
+  const match = String(text).match(
+    /\b(?:from|starting\s*(?:at|from))\s*£\s?([\d,]+(?:\.\d+)?)\s*(k)?/i,
+  );
+  if (!match) return null;
+  return {
+    min: parseAmount(match[1], match[2]),
+    max: null,
+    unit: detectUnit(text),
+  };
+}
+
+function findCirca(text = '') {
+  const match = String(text).match(
+    /(?:\bcirca\b|\bc\.\s*|\baround\b|\bapprox(?:imately)?\b)\s*£\s?([\d,]+(?:\.\d+)?)\s*(k)?/i,
+  );
+  if (!match) return null;
+  return {
+    min: parseAmount(match[1], match[2]),
+    max: null,
+    unit: detectUnit(text),
+  };
+}
+
+function hasOte(text = '') {
+  return /\bote\b/i.test(String(text));
 }
 
 function formatMoney(value) {
@@ -78,7 +138,13 @@ export function detectContractType(text = '') {
 
 export function buildSalaryInfo({ title = '', description = '', extensions = [], salaryMin = null, salaryMax = null }) {
   const combinedText = [title, description, ...(extensions ?? [])].filter(Boolean).join(' | ');
-  const explicitRange = findRange(combinedText) ?? findSingle(combinedText);
+  const explicitRange =
+    findRange(combinedText)
+    ?? findBetween(combinedText)
+    ?? findUpTo(combinedText)
+    ?? findFrom(combinedText)
+    ?? findCirca(combinedText)
+    ?? findSingle(combinedText);
   const fallbackMin = cleanNumber(salaryMin);
   const fallbackMax = cleanNumber(salaryMax);
   const textUnit = explicitRange?.unit ?? detectUnit(combinedText);
@@ -93,6 +159,7 @@ export function buildSalaryInfo({ title = '', description = '', extensions = [],
     : insideIr35Pattern.test(combinedText)
       ? ' Inside IR35'
       : '';
+  const ote = hasOte(combinedText);
 
   return {
     isContract: inferredContract,
@@ -104,13 +171,15 @@ export function buildSalaryInfo({ title = '', description = '', extensions = [],
       salaryMax: normalizedMax,
       rateSuffix,
       ir35,
+      ote,
     }),
   };
 }
 
-export function formatSalary({ isContract, salaryMin, salaryMax, rateSuffix = '', ir35 = '' }) {
+export function formatSalary({ isContract, salaryMin, salaryMax, rateSuffix = '', ir35 = '', ote = false }) {
   const min = cleanNumber(salaryMin);
   const max = cleanNumber(salaryMax);
+  const oteSuffix = ote ? ' (OTE)' : '';
 
   if (min == null && max == null) {
     return 'Salary not listed';
@@ -118,17 +187,24 @@ export function formatSalary({ isContract, salaryMin, salaryMax, rateSuffix = ''
 
   if (min != null && max != null) {
     if (isContract) {
-      return `${formatMoney(min)}-${formatMoney(max)}${rateSuffix}${ir35}`;
+      return `${formatMoney(min)}-${formatMoney(max)}${rateSuffix}${ir35}${oteSuffix}`;
     }
 
-    return `${formatMoney(min)} - ${formatMoney(max)}`;
+    return `${formatMoney(min)} - ${formatMoney(max)}${oteSuffix}`;
+  }
+
+  if (min == null) {
+    if (isContract) {
+      return `Up to ${formatMoney(max)}${rateSuffix}${ir35}${oteSuffix}`;
+    }
+    return `Up to ${formatMoney(max)}${oteSuffix}`;
   }
 
   if (isContract) {
-    return `${formatMoney(min ?? max)}${rateSuffix}${ir35}`;
+    return `${formatMoney(min)}${rateSuffix}${ir35}`;
   }
 
-  return `From ${formatMoney(min ?? max)}`;
+  return `From ${formatMoney(min)}`;
 }
 
 export function passesMinimumSalary(job, minimumSalary) {

@@ -41,6 +41,7 @@ import { passesMinimumSalary } from './utils/salary.js';
 import { scoreJob } from './utils/rag.js';
 import { isSeniorEnough } from './utils/seniority.js';
 import { enrichJobDescription } from './utils/enrich.js';
+import { extractJobSignals, mergeJobSignals } from './utils/extractors.js';
 import { createRunCsvLog } from './utils/run_log_csv.js';
 
 const client = hasDiscordBotConfig() ? createDiscordClient() : null;
@@ -223,6 +224,13 @@ async function runSearchCycle(trigger = 'scheduled') {
               job = enrichedJob;
             }
 
+            const signals = extractJobSignals({
+              title: job.title,
+              description: job.description,
+              salaryTextHint: job.salaryText,
+            });
+            job = mergeJobSignals(job, signals);
+
             const salaryPassed = passesMinimumSalary(job, search.min_salary);
             const seniority = isSeniorEnough(job);
             const { rating, score, reason } = scoreJob(job);
@@ -252,6 +260,10 @@ async function runSearchCycle(trigger = 'scheduled') {
               },
               csvRow: {
                 ...base,
+                salary_text: job.salaryText,
+                salary_min: job.salaryMin,
+                salary_max: job.salaryMax,
+                is_contract: job.isContract ? 'yes' : 'no',
                 desc_chars: job.description?.length ?? 0,
                 enriched: enriched ? 'yes' : 'no',
                 rag_rating: rating,

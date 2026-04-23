@@ -17,6 +17,65 @@ function stripHtml(html) {
     .trim();
 }
 
+// Per-domain body selectors. Each returns the inner HTML of the main job-body
+// block, or null if the marker wasn't found. Regex-only — no DOM library.
+const domainExtractors = [
+  {
+    host: /(^|\.)linkedin\.com$/i,
+    extract: (html) => {
+      const m = html.match(/<div[^>]*class="[^"]*show-more-less-html__markup[^"]*"[^>]*>([\s\S]*?)<\/div>/i)
+        ?? html.match(/<section[^>]*class="[^"]*description__text[^"]*"[^>]*>([\s\S]*?)<\/section>/i);
+      return m?.[1] ?? null;
+    },
+  },
+  {
+    host: /(^|\.)cv-library\.co\.uk$/i,
+    extract: (html) => {
+      const m = html.match(/<div[^>]*class="[^"]*job-description[^"]*"[^>]*>([\s\S]*?)<\/div>\s*<\/div>/i)
+        ?? html.match(/<div[^>]*id="job-description"[^>]*>([\s\S]*?)<\/div>/i);
+      return m?.[1] ?? null;
+    },
+  },
+  {
+    host: /(^|\.)risetechnical\.com$/i,
+    extract: (html) => {
+      const m = html.match(/<div[^>]*class="[^"]*job-detail[^"]*"[^>]*>([\s\S]*?)<\/div>\s*<\/div>/i)
+        ?? html.match(/<article[^>]*>([\s\S]*?)<\/article>/i);
+      return m?.[1] ?? null;
+    },
+  },
+  {
+    host: /(^|\.)jobserve\.com$/i,
+    extract: (html) => {
+      const m = html.match(/<div[^>]*id="jobDescription"[^>]*>([\s\S]*?)<\/div>/i)
+        ?? html.match(/<div[^>]*class="[^"]*JobDetail[^"]*"[^>]*>([\s\S]*?)<\/div>\s*<\/div>/i);
+      return m?.[1] ?? null;
+    },
+  },
+  {
+    host: /(^|\.)constructionenquirer\.com$/i,
+    extract: (html) => {
+      const m = html.match(/<div[^>]*class="[^"]*entry-content[^"]*"[^>]*>([\s\S]*?)<\/div>\s*<\/div>/i);
+      return m?.[1] ?? null;
+    },
+  },
+];
+
+function extractBody(html, url) {
+  try {
+    const hostname = new URL(url).hostname;
+    for (const { host, extract } of domainExtractors) {
+      if (host.test(hostname)) {
+        const body = extract(html);
+        if (body) return stripHtml(body);
+      }
+    }
+  } catch {
+    // fall through to full-page strip
+  }
+  return stripHtml(html);
+}
+
 /**
  * Fetches the job's detail page and returns the job with `description` replaced
  * by the full page text (stripped of HTML). Falls back to the original job on failure.
@@ -43,7 +102,7 @@ export async function enrichJobDescription(job) {
     });
 
     if (typeof response.data === 'string') {
-      const fullText = stripHtml(response.data);
+      const fullText = extractBody(response.data, url);
 
       // Only upgrade if the page gave us more content
       if (fullText.length > (job.description?.length ?? 0)) {
