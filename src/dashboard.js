@@ -8,7 +8,31 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { spawn } from 'child_process';
-import { getAllJobsForDashboard } from './db.js';
+import Database from 'better-sqlite3';
+import { appConfig } from './config.js';
+
+// Open a dedicated read-only connection. The writer schema lives in src/db.js;
+// importing it here would open a second writer on the same SQLite file, which
+// previously corrupted the WAL.
+let readonlyDb = null;
+let readonlyStmt = null;
+function getAllJobsForDashboard() {
+  if (!readonlyDb) {
+    readonlyDb = new Database(appConfig.dbPath, { readonly: true, fileMustExist: true });
+    readonlyStmt = readonlyDb.prepare(`
+      SELECT
+        found_at, source, search_id, title, company, location,
+        salary_text, salary_min, salary_max, is_contract, url, posted_at,
+        notified, filter_reason, rag_rating, rag_score, rag_reason,
+        remote_type, contract_length_months, sectors, clearances, tech_tools,
+        years_experience, has_bonus, bonus_percent, car_allowance,
+        pension_percent, has_equity
+      FROM jobs
+      ORDER BY found_at DESC, id DESC
+    `);
+  }
+  return readonlyStmt.all();
+}
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const RUNS_DIR = path.join(__dirname, '..', 'logs', 'runs');
