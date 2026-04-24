@@ -8,9 +8,11 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { spawn } from 'child_process';
+import { getAllJobsForDashboard } from './db.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const RUNS_DIR = path.join(__dirname, '..', 'logs', 'runs');
+const ALL_JOBS_ID = '__all__.csv';
 
 const portArg = process.argv.indexOf('--port');
 const PORT = portArg !== -1 ? parseInt(process.argv[portArg + 1], 10) : 3099;
@@ -91,11 +93,55 @@ function splitCsvLine(line) {
 
 // ── File listing ──────────────────────────────────────────────────────────────
 function listCsvFiles() {
-  if (!fs.existsSync(RUNS_DIR)) return [];
-  return fs.readdirSync(RUNS_DIR)
-    .filter(f => f.endsWith('.csv'))
-    .sort()
-    .reverse();
+  const csvs = fs.existsSync(RUNS_DIR)
+    ? fs.readdirSync(RUNS_DIR).filter(f => f.endsWith('.csv')).sort().reverse()
+    : [];
+  return [ALL_JOBS_ID, ...csvs];
+}
+
+function rowFromDbJob(job) {
+  const outcome = job.filter_reason
+    ? job.filter_reason
+    : (job.notified ? 'new' : 'already_seen');
+  return {
+    run_at: job.found_at ?? '',
+    trigger: 'db_all',
+    search_id: job.search_id ?? '',
+    search_name: job.search_id ?? '',
+    source: job.source ?? '',
+    title: job.title ?? '',
+    company: job.company ?? '',
+    location: job.location ?? '',
+    salary_text: job.salary_text ?? '',
+    salary_min: job.salary_min ?? '',
+    salary_max: job.salary_max ?? '',
+    is_contract: job.is_contract ? 'yes' : 'no',
+    url: job.url ?? '',
+    posted_at: job.posted_at ?? '',
+    found_at: job.found_at ?? '',
+    desc_chars: '',
+    enriched: '',
+    outcome,
+    rag_rating: job.rag_rating ?? '',
+    rag_score: job.rag_score ?? '',
+    rag_reason: job.rag_reason ?? '',
+    remote_type: job.remote_type ?? '',
+    contract_length_months: job.contract_length_months ?? '',
+    sectors: job.sectors ?? '',
+    clearances: job.clearances ?? '',
+    tech_tools: job.tech_tools ?? '',
+    years_experience: job.years_experience ?? '',
+    has_bonus: job.has_bonus ? 'yes' : '',
+    bonus_percent: job.bonus_percent ?? '',
+    car_allowance: job.car_allowance ?? '',
+    pension_percent: job.pension_percent ?? '',
+    has_equity: job.has_equity ? 'yes' : '',
+  };
+}
+
+function getAllJobsAggregate() {
+  const rows = getAllJobsForDashboard().map(rowFromDbJob);
+  return aggregate(rows);
 }
 
 // Cache aggregated data per CSV, keyed by filename + mtime so stale entries are
@@ -694,6 +740,7 @@ const COLS = [
   { key: 'rag_score',   label: 'Score',       type: 'text',   width: '60px'  },
   { key: 'rag_reason',  label: 'Reason',      type: 'text',   width: '200px', wrap: true },
   { key: 'posted_at',   label: 'Posted',      type: 'text',   width: '110px' },
+  { key: 'found_at',    label: 'First seen',  type: 'text',   width: '140px' },
 ];
 
 // ── Chart helpers ─────────────────────────────────────────────────────────────
@@ -1560,7 +1607,9 @@ async function refreshFiles() {
     files.forEach((f, i) => {
       const opt = document.createElement('option');
       opt.value = f;
-      opt.textContent = f.replace(/^run_/, '').replace(/(_oneshot|_bot)\\.csv$/, ' ($1).csv');
+      opt.textContent = f === '__all__.csv'
+        ? '★ All jobs (deduped from DB)'
+        : f.replace(/^run_/, '').replace(/(_oneshot|_bot)\\.csv$/, ' ($1).csv');
       sel.appendChild(opt);
     });
     // keep selection or auto-load newest
@@ -1681,6 +1730,16 @@ const server = http.createServer((req, res) => {
     const file = url.searchParams.get('file');
     if (!file || file.includes('..') || !file.endsWith('.csv')) {
       res.writeHead(400); res.end('Bad file param'); return;
+    }
+    if (file === ALL_JOBS_ID) {
+      try {
+        const data = getAllJobsAggregate();
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(data));
+      } catch (e) {
+        res.writeHead(500); res.end(e.message);
+      }
+      return;
     }
     const filePath = path.join(RUNS_DIR, file);
     if (!fs.existsSync(filePath)) {

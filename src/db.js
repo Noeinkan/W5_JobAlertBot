@@ -316,6 +316,41 @@ export function createDatabase(databasePath = appConfig.dbPath) {
     getJobsWithDescription() {
       return statements.selectJobsForBackfillStatement.all();
     },
+    getAllJobsForDashboard() {
+      return db.prepare(`
+        SELECT
+          found_at,
+          source,
+          search_id,
+          title,
+          company,
+          location,
+          salary_text,
+          salary_min,
+          salary_max,
+          is_contract,
+          url,
+          posted_at,
+          notified,
+          filter_reason,
+          rag_rating,
+          rag_score,
+          rag_reason,
+          remote_type,
+          contract_length_months,
+          sectors,
+          clearances,
+          tech_tools,
+          years_experience,
+          has_bonus,
+          bonus_percent,
+          car_allowance,
+          pension_percent,
+          has_equity
+        FROM jobs
+        ORDER BY found_at DESC, id DESC
+      `).all();
+    },
     markJobNotified(job) {
       statements.markNotifiedStatement.run(job.source, job.title.trim(), (job.company ?? '').trim());
     },
@@ -392,4 +427,8 @@ export function updateExtraction(id, extraction) {
 
 export function getJobsWithDescription() {
   return defaultDatabase.getJobsWithDescription();
+}
+
+export function getAllJobsForDashboard() {
+  return defaultDatabase.getAllJobsForDashboard();
 }
