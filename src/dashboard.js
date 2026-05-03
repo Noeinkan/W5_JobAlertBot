@@ -480,12 +480,13 @@ const HTML = /* html */`<!DOCTYPE html>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 html,body{height:100vh;overflow:hidden}
 body{font-family:system-ui,sans-serif;background:#0f1117;color:#e2e8f0;display:flex;flex-direction:column}
-header{background:#1a1d27;padding:.8rem 1.25rem;display:flex;align-items:center;gap:.75rem;border-bottom:1px solid #2d3148;position:sticky;top:0;z-index:100;flex-wrap:wrap}
-header h1{font-size:1rem;font-weight:600;color:#a5b4fc;flex:1;min-width:220px}
+header{background:#1a1d27;padding:.55rem 1rem;display:flex;align-items:center;gap:.6rem;border-bottom:1px solid #2d3148;position:sticky;top:0;z-index:100;flex-wrap:wrap}
+header h1{font-size:.9rem;font-weight:600;color:#a5b4fc;flex:1;min-width:220px;letter-spacing:.01em}
 select{background:#252836;color:#e2e8f0;border:1px solid #3d4268;border-radius:6px;padding:.35rem .7rem;font-size:.85rem;cursor:pointer;max-width:min(100%,420px);min-width:210px}
 select:focus{outline:2px solid #6366f1}
 #meta{font-size:.78rem;color:#64748b;white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis}
-main{padding:.85rem 1rem;display:flex;flex-direction:column;gap:.65rem;flex:1;min-height:0;overflow:hidden}
+#preMain{padding:.6rem 1rem 0;display:flex;flex-direction:column;gap:.55rem;flex-shrink:0}
+main{padding:.6rem 1rem .85rem;display:flex;flex-direction:column;gap:.65rem;flex:1;min-height:0;overflow:hidden}
 .section[data-section="table"]{flex:1 1 0;min-height:220px;display:flex;flex-direction:column}
 .section[data-section="table"] .section-body{flex:1;min-height:0;display:flex;flex-direction:column;padding:.55rem .7rem}
 .section[data-section="table"] .table-card{flex:1;min-height:0;display:flex;flex-direction:column;background:transparent;border:none;padding:0}
@@ -619,8 +620,6 @@ tbody td a:hover{text-decoration:underline}
 .badge.Red  {background:#3b1111;color:#f87171}
 .badge.contract{background:#1e3a5f;color:#38bdf8}
 .badge.perm    {background:#1e2235;color:#64748b}
-.top-scroll-wrap{overflow-x:auto;overflow-y:hidden;height:12px;margin-bottom:2px}
-.top-scroll-inner{height:1px}
 .bottom-scroll-wrap{overflow-x:auto;overflow-y:hidden;height:14px;position:sticky;bottom:0;background:#1a1d27;border-top:1px solid #2d3148;z-index:20}
 .bottom-scroll-inner{height:1px}
 .cr-note{font-size:.72rem;color:#475569;margin-bottom:.5rem;font-style:italic}
@@ -646,9 +645,14 @@ tbody td a:hover{text-decoration:underline}
 #botStateBadge.done   {background:#14532d;color:#4ade80}
 #botStateBadge.error  {background:#3b1111;color:#f87171}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.55}}
-#logPanel{background:#0b0d12;border-bottom:1px solid #2d3148;padding:.6rem 1.25rem;font-family:monospace;font-size:.73rem;color:#94a3b8;max-height:160px;overflow-y:auto;white-space:pre-wrap;word-break:break-all;display:none;flex-shrink:0}
-#trendSection{flex-shrink:0}
-#trendSection .chart-wrap.tall{height:150px}
+#logPanel{background:#0b0d12;font-family:monospace;font-size:.73rem;color:#94a3b8;max-height:180px;overflow-y:auto;white-space:pre-wrap;word-break:break-all;padding:.6rem .9rem;margin:0}
+#logPanel:empty::before{content:'No log output yet. Press Run Once or Start Bot to stream logs here.';color:#475569;font-style:italic}
+.section[data-section="log"]{flex-shrink:0}
+.section[data-section="log"] .section-body{padding:0}
+.section[data-section="log"] .log-dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#475569;margin-right:.25rem}
+.section[data-section="log"].has-activity .log-dot{background:#38bdf8;box-shadow:0 0 6px #38bdf8;animation:pulse 1.4s ease-in-out infinite}
+.section[data-section="trend"]{flex-shrink:0}
+.section[data-section="trend"] .chart-wrap.tall{height:170px}
 @media (max-width: 1100px){
   header{padding:.7rem 1rem}
   header h1{flex-basis:100%;min-width:0}
@@ -687,16 +691,30 @@ tbody td a:hover{text-decoration:underline}
     <button id="stopBotBtn"  class="run-btn stop" title="Stop the running process" style="display:none">■ Stop</button>
   </div>
 </header>
-<div id="logPanel"></div>
-<section id="trendSection" style="padding:1.25rem 1.25rem 0;display:none">
-  <div class="card">
-    <h2 style="font-size:.78rem;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:.06em;margin-bottom:.9rem;display:flex;align-items:center;gap:.45rem">
-      Notify rate — recent runs
-      <span class="help-tip" data-help="What: Notify rate (% of fetched rows that got through all filters) across the most recent runs, with a trailing 7-run mean baseline. Why: Tell today's run from the baseline at a glance. Read: Flat or rising is healthy; a dip below the baseline means source or filter drift.">?</span>
-    </h2>
-    <div class="chart-wrap tall"><canvas id="cTrend"></canvas></div>
-  </div>
-</section>
+<div id="preMain">
+  <section class="section" data-section="log" id="logSection" style="display:none">
+    <div class="section-header">
+      <span class="chev">▶</span>
+      <h2><span class="log-dot"></span>Bot log</h2>
+      <span class="section-meta">click to expand · streams while a run is active</span>
+    </div>
+    <div class="section-body">
+      <pre id="logPanel"></pre>
+    </div>
+  </section>
+  <section class="section" data-section="trend" id="trendSection" style="display:none">
+    <div class="section-header">
+      <span class="chev">▶</span>
+      <h2>Notify rate — recent runs
+        <span class="help-tip" data-help="What: Notify rate (% of fetched rows that got through all filters) across the most recent runs, with a trailing 7-run mean baseline. Why: Tell today's run from the baseline at a glance. Read: Flat or rising is healthy; a dip below the baseline means source or filter drift.">?</span>
+      </h2>
+      <span class="section-meta">trend across recent CSV runs</span>
+    </div>
+    <div class="section-body">
+      <div class="chart-wrap tall"><canvas id="cTrend"></canvas></div>
+    </div>
+  </section>
+</div>
 <main id="main">
   <div id="loading">Loading…</div>
 </main>
@@ -985,6 +1003,7 @@ function initSectionToggles() {
     if (section.classList.contains('section-toggle-none')) return;
     const id = section.dataset.section;
     if (id && id in state) section.classList.toggle('open', !!state[id]);
+    if (section.dataset.toggleBound === '1') return;
     const header = section.querySelector('.section-header');
     if (!header) return;
     header.addEventListener('click', () => {
@@ -993,6 +1012,7 @@ function initSectionToggles() {
       s[id] = section.classList.contains('open');
       saveSectionState(s);
     });
+    section.dataset.toggleBound = '1';
   });
 }
 
@@ -1071,12 +1091,9 @@ function renderTable() {
 
   // sync scrollbar widths
   const tableWrap    = document.getElementById('tableWrap');
-  const topInner     = document.getElementById('topScrollInner');
   const bottomInner  = document.getElementById('bottomScrollInner');
-  if (tableWrap) {
-    const w = tableWrap.scrollWidth + 'px';
-    if (topInner)    topInner.style.width    = w;
-    if (bottomInner) bottomInner.style.width = w;
+  if (tableWrap && bottomInner) {
+    bottomInner.style.width = tableWrap.scrollWidth + 'px';
   }
 }
 
@@ -1110,7 +1127,6 @@ function buildTableHTML(rows) {
     <span id="rowCount"></span>
     <button class="btn" id="clearFilters">Clear filters</button>
   </div>
-  <div class="top-scroll-wrap" id="topScroll"><div class="top-scroll-inner" id="topScrollInner"></div></div>
   <div class="table-wrap" id="tableWrap">
     <table>
       <thead>
@@ -1166,8 +1182,7 @@ function initTableEvents() {
     renderTable();
   });
 
-  // sync top ↔ table ↔ bottom scrollbars
-  const topScroll    = document.getElementById('topScroll');
+  // sync table ↔ bottom scrollbar
   const tableWrap    = document.getElementById('tableWrap');
   const bottomScroll = document.getElementById('bottomScroll');
   let syncing = false;
@@ -1175,12 +1190,10 @@ function initTableEvents() {
     if (syncing) return;
     syncing = true;
     const x = source.scrollLeft;
-    if (topScroll    !== source) topScroll.scrollLeft    = x;
     if (tableWrap    !== source) tableWrap.scrollLeft    = x;
     if (bottomScroll !== source) bottomScroll.scrollLeft = x;
     syncing = false;
   }
-  topScroll.addEventListener('scroll',    () => syncFrom(topScroll));
   tableWrap.addEventListener('scroll',    () => syncFrom(tableWrap));
   bottomScroll.addEventListener('scroll', () => syncFrom(bottomScroll));
 }
@@ -1534,7 +1547,7 @@ async function loadTrend() {
     const { series } = await res.json();
     const section = document.getElementById('trendSection');
     if (!series || series.length < 2) { section.style.display = 'none'; return; }
-    section.style.display = 'block';
+    section.style.display = '';
 
     const labels = series.map(s => {
       const d = s.runAt ? new Date(s.runAt) : null;
@@ -1590,6 +1603,7 @@ async function init() {
     sel.appendChild(opt);
   });
   sel.addEventListener('change', () => loadFile(sel.value));
+  initSectionToggles();
   loadTrend();
   if (files.length) await loadFile(files[0]);
   else document.getElementById('main').innerHTML = '<div id="error">No CSV files found in logs/runs/</div>';
@@ -1618,6 +1632,11 @@ function applyStatus(s) {
   runOnceBtn.style.display  = running ? 'none' : '';
   startBotBtn.style.display = running ? 'none' : '';
   stopBotBtn.style.display  = running ? ''     : 'none';
+  const logSec = document.getElementById('logSection');
+  if (logSec) {
+    if (running) { logSec.style.display = ''; logSec.classList.add('has-activity'); }
+    else         { logSec.classList.remove('has-activity'); }
+  }
   if (!running && needsRefresh) { needsRefresh = false; refreshFiles(); }
 }
 
@@ -1661,16 +1680,24 @@ async function botAction(action) {
   if (!res.ok) { alert(await res.text()); }
 }
 
+function showLogSection() {
+  const sec = document.getElementById('logSection');
+  if (sec) {
+    sec.style.display = '';
+    sec.classList.add('has-activity');
+  }
+}
+
 runOnceBtn.addEventListener('click', () => {
   logPanel.textContent = '';
-  logPanel.style.display = 'block';
+  showLogSection();
   needsRefresh = true;
   botAction('start-once');
 });
 
 startBotBtn.addEventListener('click', () => {
   logPanel.textContent = '';
-  logPanel.style.display = 'block';
+  showLogSection();
   botAction('start-daemon');
 });
 
