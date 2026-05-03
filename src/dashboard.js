@@ -485,7 +485,8 @@ header h1{font-size:.9rem;font-weight:600;color:#a5b4fc;flex:1;min-width:220px;l
 select{background:#252836;color:#e2e8f0;border:1px solid #3d4268;border-radius:6px;padding:.35rem .7rem;font-size:.85rem;cursor:pointer;max-width:min(100%,420px);min-width:210px}
 select:focus{outline:2px solid #6366f1}
 #meta{font-size:.78rem;color:#64748b;white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis}
-#preMain{padding:.6rem 1rem 0;display:flex;flex-direction:column;gap:.55rem;flex-shrink:0}
+#preMain{padding:0 1rem;display:flex;flex-direction:column;gap:.55rem;flex-shrink:0}
+#preMain:has(section:not([style*="display: none"])){padding:.6rem 1rem 0}
 main{padding:.6rem 1rem .85rem;display:flex;flex-direction:column;gap:.65rem;flex:1;min-height:0;overflow:hidden}
 .section[data-section="table"]{flex:1 1 0;min-height:220px;display:flex;flex-direction:column}
 .section[data-section="table"] .section-body{flex:1;min-height:0;display:flex;flex-direction:column;padding:.55rem .7rem}
@@ -653,29 +654,51 @@ tbody td a:hover{text-decoration:underline}
 .section[data-section="log"].has-activity .log-dot{background:#38bdf8;box-shadow:0 0 6px #38bdf8;animation:pulse 1.4s ease-in-out infinite}
 .section[data-section="trend"]{flex-shrink:0}
 .section[data-section="trend"] .chart-wrap.tall{height:170px}
-@media (max-width: 1100px){
-  header{padding:.7rem 1rem}
+/* ── 1 100px: wide tablet / small laptop ── */
+@media (max-width:1100px){
   header h1{flex-basis:100%;min-width:0}
   #meta{order:4;flex:1 1 100%;white-space:normal;overflow:visible;text-overflow:clip}
 }
-@media (max-width: 860px){
-  main{padding:1rem;gap:1rem}
+/* ── 860px: tablet portrait / large phone landscape ── */
+@media (max-width:860px){
+  html,body{height:auto;overflow:visible}
+  body{min-height:100dvh}
+  main{flex:none;overflow:visible;padding:.6rem .75rem .85rem}
+  #preMain{padding:.55rem .75rem 0}
+  #preMain:has(section:not([style*="display: none"])){padding:.55rem .75rem 0}
+  .section[data-section="table"]{flex:none;min-height:none}
+  .section[data-section="table"] .section-body{flex:none}
+  .section[data-section="table"] .table-card{flex:none}
+  .section[data-section="table"] .table-wrap{flex:none;max-height:65vh}
+  .section[data-section="overview"] .section-body,
+  .section[data-section="advanced"] .section-body{max-height:none;overflow:visible}
   .charts-grid{grid-template-columns:1fr}
   .chart-wrap{height:230px}
   .chart-wrap.tall{height:260px}
   .chart-wrap.xtall{height:280px}
   .table-toolbar h2{flex-basis:100%}
   #globalSearch{width:100%;max-width:none}
+  .filter-bar{position:static}
 }
-@media (max-width: 640px){
-  header{gap:.55rem}
+/* ── 640px: phone portrait ── */
+@media (max-width:640px){
+  header{gap:.45rem;padding:.45rem .75rem}
+  header h1{font-size:.82rem}
   select{min-width:0;flex:1 1 100%}
   #headerButtons{flex:1 1 100%}
-  #headerButtons .run-btn{flex:1 1 calc(50% - .5rem);text-align:center}
-  .kpi-row{grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:.75rem}
-  .kpi .val{font-size:1.55rem}
-  .table-wrap{max-width:100%}
+  #headerButtons .run-btn{flex:1 1 calc(50% - .5rem);text-align:center;font-size:.78rem}
+  #botStateBadge{font-size:.7rem}
+  main,#preMain{padding-left:.6rem;padding-right:.6rem}
+  .kpi-row{grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:.55rem}
+  .kpi .val{font-size:1.3rem}
+  .kpi{padding:.45rem .6rem}
+  .section-header{padding:.55rem .7rem}
+  .section-header h2{font-size:.78rem}
+  .card{padding:.75rem}
   .help-grid,.diagram-grid{grid-template-columns:1fr}
+  .table-toolbar{gap:.5rem}
+  .table-wrap{max-height:55vh}
+  .bottom-scroll-wrap{height:18px}
 }
 </style>
 </head>
@@ -1011,6 +1034,8 @@ function initSectionToggles() {
       const s = loadSectionState();
       s[id] = section.classList.contains('open');
       saveSectionState(s);
+      if (section.classList.contains('open'))
+        section.dispatchEvent(new CustomEvent('section-opened', { bubbles: false }));
     });
     section.dataset.toggleBound = '1';
   });
@@ -1588,6 +1613,8 @@ async function loadTrend() {
         },
       },
     });
+    // resize chart when user opens the collapsed section (canvas was hidden during creation)
+    section.addEventListener('section-opened', () => { if (trendChart) trendChart.resize(); }, { once: false });
   } catch { /* silently skip trend chart on errors */ }
 }
 
