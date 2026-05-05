@@ -32,8 +32,7 @@ module.exports = {
       time: true,
       env: {
         NODE_ENV: 'production',
-        DASHBOARD_HOST: '172.18.0.1',
-        DASHBOARD_BASE_PATH: '/job_dashboard',
+        DASHBOARD_HOST: '0.0.0.0',
       },
       out_file: 'logs/dashboard-out.log',
       error_file: 'logs/dashboard-error.log',
