@@ -23,6 +23,8 @@ const JOB_COLUMN_ADDITIONS = [
   ['car_allowance', 'REAL'],
   ['pension_percent', 'INTEGER'],
   ['has_equity', 'INTEGER'],
+  ['applied', 'INTEGER'],
+  ['discarded', 'INTEGER'],
 ];
 
 function createSchema(db) {

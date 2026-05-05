@@ -29,6 +29,8 @@ function extractCards(html) {
   return html.split('<li').slice(1).filter((chunk) => chunk.includes('base-card'));
 }
 
+const PAGES = [0, 25];
+
 export const linkedinSource = {
   name: 'linkedin',
   isConfigured() {
@@ -42,30 +44,37 @@ export const linkedinSource = {
         ? `${search.location}, United Kingdom`
         : 'United Kingdom';
 
-    const params = new URLSearchParams({
-      keywords: search.query,
-      location,
-      start: '0',
-      count: '25',
-    });
+    const allCards = [];
+    for (const start of PAGES) {
+      const params = new URLSearchParams({
+        keywords: search.query,
+        location,
+        start: String(start),
+        count: '25',
+      });
 
-    const response = await withRetry(
-      () => axios.get(`${baseUrl}?${params.toString()}`, {
-        timeout: appConfig.requestTimeoutMs,
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-          Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-          'Accept-Language': 'en-GB,en;q=0.9',
-        },
-        responseType: 'text',
-      }),
-      { source: 'linkedin', searchId: search.id }
-    );
+      const response = await withRetry(
+        () => axios.get(`${baseUrl}?${params.toString()}`, {
+          timeout: appConfig.requestTimeoutMs,
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+            Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Language': 'en-GB,en;q=0.9',
+          },
+          responseType: 'text',
+        }),
+        { source: 'linkedin', searchId: search.id }
+      );
 
-    const cards = extractCards(response.data);
+      const page = extractCards(response.data);
+      if (page.length === 0) break;
+      allCards.push(...page);
+    }
+
+    const seenUrls = new Set();
     const jobs = [];
 
-    for (const card of cards) {
+    for (const card of allCards) {
       const title = extractText(card, 'base-search-card__title');
       if (!title) continue;
 
@@ -76,6 +85,8 @@ export const linkedinSource = {
       const location = extractText(card, 'job-search-card__location') ?? search.location ?? 'UK';
       const rawUrl = extractHref(card, 'base-card__full-link') ?? extractHref(card, 'base-card');
       const url = rawUrl ? rawUrl.split('?')[0] : null;
+      if (url && seenUrls.has(url)) continue;
+      if (url) seenUrls.add(url);
       const datetime = extractDatetime(card);
 
       const salaryInfo = buildSalaryInfo({ title, description: snippet });

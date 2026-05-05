@@ -16,6 +16,18 @@ import { appConfig } from './config.js';
 // previously corrupted the WAL.
 let readonlyDb = null;
 let readonlyStmt = null;
+
+// Dedicated writable connection — used only for dashboard action endpoints.
+let writeDb = null;
+function getWriteDb() {
+  if (!writeDb) {
+    writeDb = new Database(appConfig.dbPath, { readonly: false, fileMustExist: true });
+    const existing = new Set(writeDb.prepare('PRAGMA table_info(jobs)').all().map(r => r.name));
+    if (!existing.has('applied'))   writeDb.exec('ALTER TABLE jobs ADD COLUMN applied INTEGER DEFAULT 0');
+    if (!existing.has('discarded')) writeDb.exec('ALTER TABLE jobs ADD COLUMN discarded INTEGER DEFAULT 0');
+  }
+  return writeDb;
+}
 function getAllJobsForDashboard() {
   if (!readonlyDb) {
     readonlyDb = new Database(appConfig.dbPath, { readonly: true, fileMustExist: true });
@@ -26,7 +38,7 @@ function getAllJobsForDashboard() {
         notified, filter_reason, rag_rating, rag_score, rag_reason,
         remote_type, contract_length_months, sectors, clearances, tech_tools,
         years_experience, has_bonus, bonus_percent, car_allowance,
-        pension_percent, has_equity
+        pension_percent, has_equity, applied, discarded
       FROM jobs
       ORDER BY found_at DESC, id DESC
     `);
@@ -124,10 +136,14 @@ function listCsvFiles() {
 }
 
 function rowFromDbJob(job) {
-  const outcome = job.filter_reason
+  const baseOutcome = job.filter_reason
     ? job.filter_reason
     : (job.notified ? 'new' : 'already_seen');
+  const outcome = job.discarded
+    ? 'discarded'
+    : (job.applied ? 'applied' : baseOutcome);
   return {
+    _baseOutcome: baseOutcome,
     run_at: job.found_at ?? '',
     trigger: 'db_all',
     search_id: job.search_id ?? '',
@@ -160,6 +176,8 @@ function rowFromDbJob(job) {
     car_allowance: job.car_allowance ?? '',
     pension_percent: job.pension_percent ?? '',
     has_equity: job.has_equity ? 'yes' : '',
+    applied:   job.applied   ? '1' : '0',
+    discarded: job.discarded ? '1' : '0',
   };
 }
 
@@ -296,10 +314,12 @@ function aggregate(rows) {
   }
 
   return {
-    total:       rows.length,
-    notified:    rows.filter(r => r.outcome === 'new').length,
-    alreadySeen: rows.filter(r => r.outcome === 'already_seen').length,
-    filtered:    rows.filter(r => r.outcome?.startsWith('filtered')).length,
+    total:         rows.length,
+    notified:      rows.filter(r => r.outcome === 'new').length,
+    alreadySeen:   rows.filter(r => r.outcome === 'already_seen').length,
+    filtered:      rows.filter(r => r.outcome?.startsWith('filtered')).length,
+    appliedCount:  rows.filter(r => r.outcome === 'applied').length,
+    discardedCount:rows.filter(r => r.outcome === 'discarded').length,
     salaryCount: salaryVals.length,
     contractCount: byContract.Contract,
     permCount:     byContract.Perm,
@@ -478,7 +498,7 @@ const HTML = /* html */`<!DOCTYPE html>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-html,body{height:100vh;overflow:hidden}
+html{scroll-behavior:smooth;overflow-x:hidden;overflow-y:scroll}html,body{min-height:100vh}
 body{font-family:system-ui,sans-serif;background:#0f1117;color:#e2e8f0;display:flex;flex-direction:column}
 header{background:#1a1d27;padding:.55rem 1rem;display:flex;align-items:center;gap:.6rem;border-bottom:1px solid #2d3148;position:sticky;top:0;z-index:100;flex-wrap:wrap}
 header h1{font-size:.9rem;font-weight:600;color:#a5b4fc;flex:1;min-width:220px;letter-spacing:.01em}
@@ -487,20 +507,20 @@ select:focus{outline:2px solid #6366f1}
 #meta{font-size:.78rem;color:#64748b;white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis}
 #preMain{padding:0 1rem;display:flex;flex-direction:column;gap:.55rem;flex-shrink:0}
 #preMain:has(section:not([style*="display: none"])){padding:.6rem 1rem 0}
-main{padding:.6rem 1rem .85rem;display:flex;flex-direction:column;gap:.65rem;flex:1;min-height:0;overflow:hidden}
-.section[data-section="table"]{flex:1 1 0;min-height:220px;display:flex;flex-direction:column}
-.section[data-section="table"] .section-body{flex:1;min-height:0;display:flex;flex-direction:column;padding:.55rem .7rem}
-.section[data-section="table"] .table-card{flex:1;min-height:0;display:flex;flex-direction:column;background:transparent;border:none;padding:0}
-.section[data-section="table"] .table-wrap{flex:1;min-height:0;max-height:none}
+main{padding:.6rem 1rem 1.5rem;display:flex;flex-direction:column;gap:.65rem}
+.section[data-section="table"]{display:flex;flex-direction:column}
+.section[data-section="table"] .section-body{padding:.55rem .7rem}
+.section[data-section="table"] .table-card{display:flex;flex-direction:column;background:transparent;border:none;padding:0}
+.section[data-section="table"] .table-wrap{max-height:70vh;min-height:420px}
 .section[data-section="overview"]{flex:0 1 auto}
-.section[data-section="overview"] .section-body{max-height:40vh;overflow-y:auto;overflow-x:hidden}
-.section[data-section="overview"] .chart-wrap{height:140px}
-.section[data-section="overview"] .chart-wrap.tall{height:170px}
+.section[data-section="overview"] .section-body{overflow:visible}
+.section[data-section="overview"] .chart-wrap{height:210px}
+.section[data-section="overview"] .chart-wrap.tall{height:240px}
 .section[data-section="advanced"]{flex:0 1 auto}
-.section[data-section="advanced"] .section-body{max-height:45vh;overflow-y:auto;overflow-x:hidden}
-.section[data-section="advanced"] .chart-wrap{height:170px}
-.section[data-section="advanced"] .chart-wrap.tall{height:210px}
-.section[data-section="advanced"] .chart-wrap.xtall{height:250px}
+.section[data-section="advanced"] .section-body{overflow:visible}
+.section[data-section="advanced"] .chart-wrap{height:220px}
+.section[data-section="advanced"] .chart-wrap.tall{height:260px}
+.section[data-section="advanced"] .chart-wrap.xtall{height:300px}
 .section-toggle-none .chev{display:none}
 .section-toggle-none .section-header{cursor:default}
 .section-toggle-none .section-header:hover{background:#181b25}
@@ -587,6 +607,14 @@ main{padding:.6rem 1rem .85rem;display:flex;flex-direction:column;gap:.65rem;fle
 .btn{background:#252836;color:#94a3b8;border:1px solid #3d4268;border-radius:6px;padding:.3rem .65rem;font-size:.8rem;cursor:pointer;transition:background .15s}
 .btn:hover{background:#2d3148;color:#e2e8f0}
 .btn.active{background:#6366f1;color:#fff;border-color:#6366f1}
+.action-btn{font-size:.72rem;font-weight:600;border:1px solid #2d3148;border-radius:4px;padding:.2rem .45rem;cursor:pointer;transition:background .15s,color .15s,border-color .15s;white-space:nowrap;line-height:1.3}
+.action-btn+.action-btn{margin-left:.3rem}
+.action-btn.act-apply{background:#1e2235;color:#94a3b8;border-color:#2d3148}
+.action-btn.act-apply:hover{background:#1e1a3b;color:#818cf8;border-color:#4f46e5}
+.action-btn.act-apply.active{background:#1e1a3b;color:#818cf8;border-color:#4f46e5}
+.action-btn.act-discard{background:#1e2235;color:#94a3b8;border-color:#2d3148}
+.action-btn.act-discard:hover{background:#2a1a1a;color:#f87171;border-color:#7f1d1d}
+.action-btn.act-discard.active{background:#2a1a1a;color:#f87171;border-color:#7f1d1d}
 .table-wrap{overflow:auto;border-radius:6px;border:1px solid #2d3148;max-height:60vh}
 table{width:100%;border-collapse:collapse;font-size:.8rem;min-width:900px}
 thead tr.header-row th{background:#1e2235;color:#94a3b8;font-weight:600;text-transform:uppercase;font-size:.72rem;letter-spacing:.05em;padding:.55rem .7rem;white-space:nowrap;border-bottom:1px solid #2d3148;position:sticky;top:0;z-index:10;user-select:none}
@@ -614,6 +642,8 @@ tbody td a:hover{text-decoration:underline}
 .badge.filtered_salary  {background:#3b2e08;color:#fbbf24}
 .badge.filtered_match   {background:#3b1f08;color:#fb923c}
 .badge.filtered_rag     {background:#2e0f3b;color:#e879f9}
+.badge.applied          {background:#1e1a3b;color:#818cf8}
+.badge.discarded        {background:#1e2235;color:#475569}
 .badge.rate-day {background:#0c2a3b;color:#38bdf8}
 .badge.rate-hour{background:#1a1040;color:#a78bfa}
 .badge.Green{background:#14532d;color:#4ade80}
@@ -661,17 +691,13 @@ tbody td a:hover{text-decoration:underline}
 }
 /* ── 860px: tablet portrait / large phone landscape ── */
 @media (max-width:860px){
-  html,body{height:auto;overflow:visible}
   body{min-height:100dvh}
-  main{flex:none;overflow:visible;padding:.6rem .75rem .85rem}
+  main{padding:.6rem .75rem 1rem}
   #preMain{padding:.55rem .75rem 0}
   #preMain:has(section:not([style*="display: none"])){padding:.55rem .75rem 0}
-  .section[data-section="table"]{flex:none;min-height:none}
-  .section[data-section="table"] .section-body{flex:none}
-  .section[data-section="table"] .table-card{flex:none}
-  .section[data-section="table"] .table-wrap{flex:none;max-height:65vh}
+  .section[data-section="table"] .table-wrap{max-height:60vh;min-height:320px}
   .section[data-section="overview"] .section-body,
-  .section[data-section="advanced"] .section-body{max-height:none;overflow:visible}
+  .section[data-section="advanced"] .section-body{overflow:visible}
   .charts-grid{grid-template-columns:1fr}
   .chart-wrap{height:230px}
   .chart-wrap.tall{height:260px}
@@ -748,6 +774,8 @@ const API_BASE = '${BASE_PATH}';
 const OUTCOME_COLORS = {
   new:                '#4ade80',
   already_seen:       '#60a5fa',
+  applied:            '#818cf8',
+  discarded:          '#475569',
   filtered_seniority: '#f87171',
   filtered_salary:    '#fbbf24',
   filtered_match:     '#fb923c',
@@ -793,6 +821,12 @@ const COLS = [
   { key: 'remote_type',            label: 'Remote',        type: 'select', width: '85px'  },
   { key: 'sectors',                label: 'Sectors',       type: 'text',   width: '130px' },
   { key: 'clearances',             label: 'Clearance',     type: 'select', width: '90px'  },
+  { key: 'outcome',     label: 'Outcome',     type: 'select', width: '130px' },
+  { key: 'rag_rating',  label: 'RAG',         type: 'select', width: '70px'  },
+  { key: 'rag_score',   label: 'Score',       type: 'text',   width: '60px'  },
+  { key: 'rag_reason',  label: 'Reason',      type: 'text',   width: '200px', wrap: true },
+  { key: 'posted_at',   label: 'Posted',      type: 'text',   width: '110px' },
+  { key: 'found_at',    label: 'First seen',  type: 'text',   width: '140px' },
   { key: 'tech_tools',             label: 'Tools',         type: 'text',   width: '180px', wrap: true },
   { key: 'years_experience',       label: 'Years',         type: 'text',   width: '55px'  },
   { key: 'contract_length_months', label: 'Length (mo)',   type: 'text',   width: '80px'  },
@@ -800,12 +834,7 @@ const COLS = [
   { key: 'car_allowance',          label: 'Car',           type: 'text',   width: '80px'  },
   { key: 'pension_percent',        label: 'Pension %',     type: 'text',   width: '80px'  },
   { key: 'has_equity',             label: 'Equity',        type: 'select', width: '70px'  },
-  { key: 'outcome',     label: 'Outcome',     type: 'select', width: '130px' },
-  { key: 'rag_rating',  label: 'RAG',         type: 'select', width: '70px'  },
-  { key: 'rag_score',   label: 'Score',       type: 'text',   width: '60px'  },
-  { key: 'rag_reason',  label: 'Reason',      type: 'text',   width: '200px', wrap: true },
-  { key: 'posted_at',   label: 'Posted',      type: 'text',   width: '110px' },
-  { key: 'found_at',    label: 'First seen',  type: 'text',   width: '140px' },
+  { key: '_actions',               label: 'Actions',       type: 'actions', width: '175px' },
 ];
 
 // ── Chart helpers ─────────────────────────────────────────────────────────────
@@ -998,18 +1027,22 @@ function rowsPassingCross(rows) {
 function updateKpisFromVisible() {
   const rows = rowsPassingCross(tableRows);
   const $ = id => document.getElementById(id);
-  const total    = rows.length;
-  const notified = rows.filter(r => r.outcome === 'new').length;
-  const seen     = rows.filter(r => r.outcome === 'already_seen').length;
-  const filtered = rows.filter(r => (r.outcome || '').startsWith('filtered')).length;
-  const contract = rows.filter(r => r.jobType === 'Contract').length;
-  const perm     = rows.filter(r => r.jobType === 'Perm').length;
-  if ($('kpiTotal'))    $('kpiTotal').textContent    = total;
-  if ($('kpiNotified')) $('kpiNotified').textContent = notified;
-  if ($('kpiSeen'))     $('kpiSeen').textContent     = seen;
-  if ($('kpiFiltered')) $('kpiFiltered').textContent = filtered;
-  if ($('kpiContract')) $('kpiContract').textContent = contract;
-  if ($('kpiPerm'))     $('kpiPerm').textContent     = perm;
+  const total     = rows.length;
+  const notified  = rows.filter(r => r.outcome === 'new').length;
+  const seen      = rows.filter(r => r.outcome === 'already_seen').length;
+  const filtered  = rows.filter(r => (r.outcome || '').startsWith('filtered')).length;
+  const contract  = rows.filter(r => r.jobType === 'Contract').length;
+  const perm      = rows.filter(r => r.jobType === 'Perm').length;
+  const applied   = rows.filter(r => r.outcome === 'applied').length;
+  const discarded = rows.filter(r => r.outcome === 'discarded').length;
+  if ($('kpiTotal'))     $('kpiTotal').textContent    = total;
+  if ($('kpiNotified'))  $('kpiNotified').textContent = notified;
+  if ($('kpiSeen'))      $('kpiSeen').textContent     = seen;
+  if ($('kpiFiltered'))  $('kpiFiltered').textContent = filtered;
+  if ($('kpiContract'))  $('kpiContract').textContent = contract;
+  if ($('kpiPerm'))      $('kpiPerm').textContent     = perm;
+  if ($('kpiApplied'))   $('kpiApplied').textContent  = applied;
+  if ($('kpiDiscarded')) $('kpiDiscarded').textContent = discarded;
 }
 
 // ── Collapsible section persistence ──────────────────────────────────────────
@@ -1092,7 +1125,17 @@ function renderTable() {
   tbody.innerHTML = visible.map(r => '<tr>' + COLS.map(c => {
     const v = r[c.key] ?? '';
     let cell;
-    if (c.isLink && v) {
+    if (c.key === '_actions') {
+      const appliedActive = r.applied === '1';
+      const discardedActive = r.discarded === '1';
+      const t  = escHtml(r.title   || '');
+      const co = escHtml(r.company || '');
+      const s  = escHtml(r.source  || '');
+      cell = '<button class="action-btn act-apply' + (appliedActive ? ' active' : '') + '" data-act="applied" data-title="' + t + '" data-company="' + co + '" data-source="' + s + '" title="' + (appliedActive ? 'Undo applied' : 'Mark as applied') + '">'
+           + (appliedActive ? '✓ Applied' : 'Apply') + '</button>'
+           + '<button class="action-btn act-discard' + (discardedActive ? ' active' : '') + '" data-act="discarded" data-title="' + t + '" data-company="' + co + '" data-source="' + s + '" title="' + (discardedActive ? 'Undo discard' : 'Mark as not relevant') + '">'
+           + (discardedActive ? '✗ Discarded' : 'Not relevant') + '</button>';
+    } else if (c.isLink && v) {
       cell = '<a href="' + escHtml(v) + '" target="_blank" rel="noreferrer">open ↗</a>';
     } else if (c.isRate && v) {
       const cls = r.rateType === 'day' ? 'rate-day' : 'rate-hour';
@@ -1130,11 +1173,14 @@ function buildTableHTML(rows) {
   });
 
   const headerCells = COLS.map(c =>
-    '<th class="sortable" data-key="' + c.key + '" style="min-width:' + (c.width||'auto') + '">' +
-    c.label + '<i class="sort-icon"></i></th>'
+    c.type === 'actions'
+      ? '<th style="min-width:' + (c.width||'auto') + '">' + c.label + '</th>'
+      : '<th class="sortable" data-key="' + c.key + '" style="min-width:' + (c.width||'auto') + '">'
+        + c.label + '<i class="sort-icon"></i></th>'
   ).join('');
 
   const filterCells = COLS.map(c => {
+    if (c.type === 'actions') return '<th></th>';
     if (c.type === 'select') {
       const options = ['<option value="">All</option>']
         .concat(opts[c.key].map(v => '<option value="' + escHtml(v) + '">' + escHtml(v) + '</option>'))
@@ -1221,6 +1267,58 @@ function initTableEvents() {
   }
   tableWrap.addEventListener('scroll',    () => syncFrom(tableWrap));
   bottomScroll.addEventListener('scroll', () => syncFrom(bottomScroll));
+
+  // ── Action buttons (Applied / Not relevant) ─────────────────────────────
+  document.getElementById('tBody').addEventListener('click', async e => {
+    const btn = e.target.closest('[data-act]');
+    if (!btn) return;
+    const act     = btn.dataset.act;      // 'applied' | 'discarded'
+    const title   = btn.dataset.title;
+    const company = btn.dataset.company;
+    const source  = btn.dataset.source;
+
+    const row = tableRows.find(r => r.title === title && r.company === company && r.source === source);
+    if (!row) return;
+
+    const wasApplied   = row.applied   === '1';
+    const wasDiscarded = row.discarded === '1';
+    let newApplied   = wasApplied;
+    let newDiscarded = wasDiscarded;
+
+    if (act === 'applied') {
+      newApplied   = !wasApplied;
+      if (newApplied) newDiscarded = false;
+    } else {
+      newDiscarded = !wasDiscarded;
+      if (newDiscarded) newApplied = false;
+    }
+
+    const token = localStorage.getItem('dashboardToken') || '';
+    const headers = { 'Content-Type': 'application/json' };
+    if (token) headers['X-Dashboard-Token'] = token;
+
+    try {
+      const res = await fetch(API_BASE + '/api/job-action', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ title, company, source, applied: newApplied ? 1 : 0, discarded: newDiscarded ? 1 : 0 }),
+      });
+      if (res.status === 401) {
+        const t = prompt('Enter Dashboard Token:');
+        if (t) { localStorage.setItem('dashboardToken', t); btn.click(); }
+        return;
+      }
+      if (!res.ok) { console.error('Action failed:', await res.text()); return; }
+
+      // Update row data in place
+      row.applied   = newApplied   ? '1' : '0';
+      row.discarded = newDiscarded ? '1' : '0';
+      row.outcome   = newDiscarded ? 'discarded' : newApplied ? 'applied' : (row._baseOutcome || 'already_seen');
+
+      renderTable();
+      updateKpisFromVisible();
+    } catch (err) { console.error(err); }
+  });
 }
 
 // ── Render full page ──────────────────────────────────────────────────────────
@@ -1242,6 +1340,8 @@ function render(data) {
       <div class="kpi red"    data-kpi="filtered"              title="Click to filter by any filtered_* outcome">                          <div class="val" id="kpiFiltered">\${data.filtered}</div>   <div class="lbl">Filtered</div></div>
       <div class="kpi"        data-kpi-jobtype="Contract"      style="--k:#38bdf8" title="Click to filter table by Contract roles">        <div class="val" id="kpiContract" style="color:#38bdf8">\${data.contractCount}</div> <div class="lbl">Contract</div></div>
       <div class="kpi"        data-kpi-jobtype="Perm"          style="--k:#94a3b8" title="Click to filter table by Permanent roles">       <div class="val" id="kpiPerm"     style="color:#94a3b8">\${data.permCount}</div>     <div class="lbl">Permanent</div></div>
+      <div class="kpi"        data-kpi-outcome="applied"        style="--k:#818cf8" title="Click to filter table by Applied jobs">          <div class="val" id="kpiApplied"   style="color:#818cf8">\${data.appliedCount}</div>   <div class="lbl">Applied</div></div>
+      <div class="kpi"        data-kpi-outcome="discarded"      style="--k:#475569" title="Click to filter table by Discarded jobs">       <div class="val" id="kpiDiscarded" style="color:#475569">\${data.discardedCount}</div> <div class="lbl">Discarded</div></div>
     </div>
 
     <div id="filterBar" class="filter-bar empty"></div>
@@ -1801,6 +1901,30 @@ const server = http.createServer((req, res) => {
     if (botProc) { botProc.kill('SIGTERM'); }
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ ok: true }));
+    return;
+  }
+
+  if (pathname === '/api/job-action' && req.method === 'POST') {
+    if (TOKEN && req.headers['x-dashboard-token'] !== TOKEN) {
+      res.writeHead(401); res.end('Unauthorized'); return;
+    }
+    let body = '';
+    req.on('data', chunk => { body += chunk; });
+    req.on('end', () => {
+      try {
+        const { title, company, source, applied, discarded } = JSON.parse(body);
+        if (!title || !source) { res.writeHead(400); res.end('Missing fields'); return; }
+        const db = getWriteDb();
+        db.prepare('UPDATE jobs SET applied = ?, discarded = ? WHERE title = ? AND (company = ? OR (company IS NULL AND ? IS NULL)) AND source = ?')
+          .run(applied ? 1 : 0, discarded ? 1 : 0, title, company || '', company || '', source);
+        // Invalidate aggregate cache for the all-jobs view
+        aggregateCache.delete(ALL_JOBS_ID);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: true }));
+      } catch (e) {
+        res.writeHead(500); res.end(e.message);
+      }
+    });
     return;
   }
 
