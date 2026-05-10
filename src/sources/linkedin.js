@@ -32,25 +32,39 @@ function extractCards(html) {
 
 const PAGE_SIZE = 25;
 
+/** Avoid "United Kingdom, United Kingdom"; guest search expects a single geo string. */
+function linkedInGeo(search) {
+  const override = search.source_options?.linkedin?.location;
+  if (override) return override;
+
+  const loc = String(search.location ?? '').trim();
+  if (!loc) return 'United Kingdom';
+
+  if (/^(united kingdom|great britain|uk)$/i.test(loc)) {
+    return 'United Kingdom';
+  }
+
+  if (/,\s*(united kingdom|uk)$/i.test(loc)) {
+    return loc;
+  }
+
+  return `${loc}, United Kingdom`;
+}
+
 export const linkedinSource = {
   name: 'linkedin',
   isConfigured() {
     return true;
   },
   async fetchJobs(search) {
-    const locationOverride = search.source_options?.linkedin?.location;
-    const location = locationOverride
-      ? locationOverride
-      : search.location
-        ? `${search.location}, United Kingdom`
-        : 'United Kingdom';
+    const geo = linkedInGeo(search);
 
     const maxCards = maxRawListingsPerQuery();
     const allCards = [];
     for (let start = 0; start < maxCards; start += PAGE_SIZE) {
       const params = new URLSearchParams({
         keywords: search.query,
-        location,
+        location: geo,
         start: String(start),
         count: String(PAGE_SIZE),
       });
