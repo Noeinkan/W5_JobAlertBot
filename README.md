@@ -118,8 +118,9 @@ Each job can be scored against [`data/profile.json`](data/profile.json) after th
 
 - `PROFILE_FIT_ENABLED`: **on by default** (unset or empty). Set to `false`, `0`, `no`, or `off` to disable CV-aligned scoring for the bot process.
 - `PROFILE_FIT_PATH`: optional path to an alternate profile JSON (defaults to `data/profile.json` relative to the project root)
+- `PROFILE_FIT_STRICT`: set to `true`, `1`, `yes`, or `on` so **only Profile Green** jobs can notify on Discord — **Profile Amber** is treated like Red (`filtered_profile_strict`). Default: off (Amber still notifies).
 
-The **dashboard** shows a **Profile fit** strip at the top (north star, config path, on/off) and table columns **Profile** / **Prof score** / **Prof reason** ahead of lexicon RAG when viewing runs or all jobs.
+The **dashboard** shows a **Profile fit** strip at the top (north star, config path, on/off, strict mode) and table columns **Profile** / **Prof score** / **Prof reason** ahead of lexicon RAG when viewing runs or all jobs.
 
 Edit [`data/profile.json`](data/profile.json) to match your CV. **Lexicon RAG** (`rag_*` columns) and **profile fit** (`profile_*`) are independent layers.
 

@@ -31,6 +31,7 @@ function readProfileSummary() {
     if (!fs.existsSync(profilePath)) {
       return {
         enabled,
+        strict: env.profileFitStrict,
         profilePath,
         ok: false,
         error: 'file_missing',
@@ -41,6 +42,7 @@ function readProfileSummary() {
     const data = JSON.parse(fs.readFileSync(profilePath, 'utf8'));
     return {
       enabled,
+      strict: env.profileFitStrict,
       profilePath,
       ok: true,
       version: data.version ?? null,
@@ -49,6 +51,7 @@ function readProfileSummary() {
   } catch (e) {
     return {
       enabled,
+      strict: env.profileFitStrict,
       profilePath,
       ok: false,
       error: e.message,

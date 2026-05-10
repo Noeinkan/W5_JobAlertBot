@@ -29,7 +29,8 @@ const OUTCOME_COLORS = {
   filtered_salary:    '#fbbf24',
   filtered_match:     '#fb923c',
   filtered_rag:       '#e879f9',
-  filtered_profile:   '#c084fc',
+  filtered_profile:        '#c084fc',
+  filtered_profile_strict: '#a855f7',
 };
 const RAG_COLORS = { Green: '#4ade80', Amber: '#fbbf24', Red: '#f87171' };
 const PALETTE = ['#6366f1','#22d3ee','#f59e0b','#10b981','#ec4899','#a78bfa','#fb923c','#38bdf8','#84cc16','#e11d48'];
@@ -208,6 +209,7 @@ function renderHelpGlossary() {
     ['Filtered Match', 'Row filtered because description/title did not match search intent strongly enough.'],
     ['Filtered Seniority', 'Row removed because seniority signal did not match target level filters.'],
     ['Filtered Profile', 'Row removed because CV/profile fit was Red while PROFILE_FIT_ENABLED is on.'],
+    ['Filtered Profile Strict', 'Row removed because PROFILE_FIT_STRICT is on and profile fit was Amber (only Green would pass).'],
     ['RAG Score', 'Numeric relevance score used alongside Green/Amber/Red rating for triage.'],
     ['Control Limits', 'Statistical upper/lower bounds for normal notified variation within selected CSV slices.'],
     ['Source Reliability', 'Share of rows from a source that are not errors inside this selected CSV.'],
@@ -403,6 +405,30 @@ function initSectionToggles() {
   });
 }
 
+/** Sources persist assorted strings in posted_at (ISO, API-native, etc.) — show uniformly as DD/MM/YYYY. */
+function formatUkDateDdMmYyyy(raw) {
+  if (raw == null || raw === '') return '';
+  const s = String(raw).trim();
+  const parsed = Date.parse(s);
+  if (!Number.isNaN(parsed)) {
+    const d = new Date(parsed);
+    if (!Number.isNaN(d.getTime())) {
+      return d.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    }
+  }
+  const m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (m) {
+    const day = parseInt(m[1], 10);
+    const month = parseInt(m[2], 10) - 1;
+    const year = parseInt(m[3], 10);
+    const d = new Date(year, month, day);
+    if (d.getFullYear() === year && d.getMonth() === month && d.getDate() === day) {
+      return d.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    }
+  }
+  return s;
+}
+
 // ── Table state ───────────────────────────────────────────────────────────────
 let tableRows  = [];
 const DEFAULT_SORT_COL = 'posted_at';
@@ -542,10 +568,13 @@ function renderTable() {
       cell = v === 'yes'
         ? '<span class="badge contract">Contract</span>'
         : '<span class="badge perm">Perm</span>';
+    } else if (c.key === 'posted_at' && v) {
+      cell = escHtml(formatUkDateDdMmYyyy(v));
     } else {
       cell = escHtml(v);
     }
-    return '<td data-key="' + escHtml(c.key) + '"' + (c.wrap ? ' class="wrap"' : '') + ' title="' + escHtml(v) + '" style="width:' + escHtml(c.width) + ';max-width:' + escHtml(c.width) + '">' + cell + '</td>';
+    const titleVal = c.key === 'posted_at' && v ? formatUkDateDdMmYyyy(v) : v;
+    return '<td data-key="' + escHtml(c.key) + '"' + (c.wrap ? ' class="wrap"' : '') + ' title="' + escHtml(titleVal) + '" style="width:' + escHtml(c.width) + ';max-width:' + escHtml(c.width) + '">' + cell + '</td>';
   }).join('') + '</tr>';
   }).join('');
 
@@ -1224,7 +1253,7 @@ function render(data) {
   });
 
   const searchEff = (analytics.searchEffectiveness || []).slice(0, 14);
-  const heatOutcomes = ['new', 'already_seen', 'filtered_match', 'filtered_seniority', 'filtered_salary', 'filtered_rag', 'filtered_profile'];
+  const heatOutcomes = ['new', 'already_seen', 'filtered_match', 'filtered_seniority', 'filtered_salary', 'filtered_rag', 'filtered_profile', 'filtered_profile_strict'];
   const searchHeatData = [];
   searchEff.forEach((s, yi) => {
     heatOutcomes.forEach((o, xi) => {
@@ -1703,6 +1732,9 @@ async function renderProfileFitBanner() {
       body = '<p class="profile-fit-north-star"><strong>North star</strong> — ' + esc(data.northStar) + '</p>';
     }
     const ver = data.version != null ? '<span class="profile-fit-meta">schema v' + esc(data.version) + '</span>' : '';
+    const strictHint = data.strict
+      ? '<p class="profile-fit-note profile-fit-note--strict"><strong>Strict mode</strong> — only <strong>Profile Green</strong> jobs are eligible for Discord (Amber is filtered).</p>'
+      : '';
     mount.innerHTML =
       '<section class="profile-fit-strip" aria-label="Profile fit summary">'
       + '<div class="profile-fit-strip-head">'
@@ -1711,8 +1743,9 @@ async function renderProfileFitBanner() {
       + ver
       + '</div>'
       + '<div class="profile-fit-strip-path" title="' + esc(data.profilePath) + '">' + esc(pathShort || data.profilePath || '') + '</div>'
+      + strictHint
       + body
-      + '<p class="profile-fit-hint">Table columns <strong>Profile</strong> / <strong>Prof score</strong> / <strong>Prof reason</strong> · tune patterns in <code>data/profile.json</code></p>'
+      + '<p class="profile-fit-hint">Table columns <strong>Profile</strong> / <strong>Prof score</strong> / <strong>Prof reason</strong> · tune patterns in <code>data/profile.json</code> · set <code>PROFILE_FIT_STRICT=true</code> for strict mode</p>'
       + '</section>';
   } catch (e) {
     mount.innerHTML = '<section class="profile-fit-strip profile-fit-strip--error">Could not load profile summary.</section>';

@@ -151,6 +151,7 @@ async function runSearchCycle(trigger = 'scheduled') {
     filteredSeniority: 0,
     filteredRag: 0,
     filteredProfile: 0,
+    filteredProfileStrict: 0,
     alreadySeen: 0,
   };
   const csvLog = createRunCsvLog(trigger);
@@ -276,6 +277,13 @@ async function runSearchCycle(trigger = 'scheduled') {
             } else if (profileFitConfigPath && profileRating === 'Red') {
               filterReason = 'filtered_profile';
               cycleStats.filteredProfile += 1;
+            } else if (
+              profileFitConfigPath &&
+              env.profileFitStrict &&
+              profileRating === 'Amber'
+            ) {
+              filterReason = 'filtered_profile_strict';
+              cycleStats.filteredProfileStrict += 1;
             }
 
             scoredJobs.push({
@@ -404,6 +412,7 @@ async function runSearchCycle(trigger = 'scheduled') {
       filteredSeniority: cycleStats.filteredSeniority,
       filteredRag: cycleStats.filteredRag,
       filteredProfile: cycleStats.filteredProfile,
+      filteredProfileStrict: cycleStats.filteredProfileStrict,
       newJobsMatchingCriteria: newJobs.length,
       alreadySeen: cycleStats.alreadySeen,
       sentToDiscord: pendingJobs.length,

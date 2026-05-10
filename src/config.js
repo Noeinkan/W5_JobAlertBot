@@ -167,6 +167,8 @@ export const env = {
     if (['false', '0', 'no', 'off'].includes(s)) return false;
     return true;
   })(),
+  /** When true with profile fit on, Profile Amber is filtered like Red (only Profile Green notifies). */
+  profileFitStrict: ['true', '1', 'yes', 'on'].includes(String(process.env.PROFILE_FIT_STRICT ?? '').toLowerCase()),
   profileFitPath: process.env.PROFILE_FIT_PATH
     ? path.resolve(process.cwd(), process.env.PROFILE_FIT_PATH)
     : path.join(dataDir, 'profile.json'),
