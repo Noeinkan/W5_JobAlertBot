@@ -55,7 +55,7 @@ const HELP_TEXT = {
 
 // ── Table columns (canonical defs + sensible default order) ──────────────────
 const COL_DEFS = [
-  { key: 'url',         label: 'Link',        type: 'text',   defaultWidth: 100, isLink: true, sticky: 1 },
+  { key: 'url',         label: 'Link',        type: 'text',   defaultWidth: 124, isLink: true, sticky: 1 },
   { key: 'title',       label: 'Title',       type: 'text',   defaultWidth: 220, sticky: 2 },
   { key: 'posted_at',   label: 'Published',   type: 'text',   defaultWidth: 130 },
   { key: 'outcome',     label: 'Outcome',     type: 'select', defaultWidth: 130 },
@@ -519,8 +519,8 @@ function renderTable() {
       const co = escHtml(r.company || '');
       const s  = escHtml(r.source  || '');
       const u  = escHtml(v);
-      cell = '<a href="' + u + '" target="_blank" rel="noreferrer">open ↗</a>'
-        + ' <button type="button" class="job-preview-btn" data-title="' + t + '" data-company="' + co + '" data-source="' + s + '" data-url="' + u + '" title="Stored job text with search and RAG highlights">highlights</button>';
+      cell = '<span class="link-cell-inner"><a href="' + u + '" target="_blank" rel="noreferrer">open ↗</a>'
+        + '<button type="button" class="job-preview-btn" data-title="' + t + '" data-company="' + co + '" data-source="' + s + '" data-url="' + u + '" title="Stored job text with search and RAG highlights">highlights</button></span>';
     } else if (c.isRate && v) {
       const cls = r.rateType === 'day' ? 'rate-day' : 'rate-hour';
       cell = '<span class="badge ' + cls + '">' + escHtml(v) + '</span>';
@@ -1405,6 +1405,80 @@ function buildHighlightedDescriptionHtml(text, payload) {
   return '<div class="job-preview-prose">' + body.replace(/\n/g, '<br/>') + '</div>';
 }
 
+/** Structured breakdown: RAG summary + lists of terms (same engine as table Reason column, expanded). */
+function buildJobAnalysisHtml(data) {
+  const chunks = ['<div class="job-preview-analysis">'];
+  chunks.push(
+    '<p class="job-preview-analysis-note">'
+    + 'Scores use the bot’s <strong>RAG matrix</strong> (weighted keyword patterns on title + description), not an external ML API. '
+    + 'Lists below are the signals stored for this row.</p>'
+  );
+
+  const rag = data.rag_rating || '';
+  const score = data.rag_score;
+  if (rag || (score != null && score !== '')) {
+    chunks.push('<div class="job-preview-rag-summary">');
+    chunks.push('<span class="job-preview-label">RAG</span> ');
+    const rk = String(rag || '').trim().toLowerCase();
+    const ragClass = rk === 'green' || rk === 'amber' || rk === 'red' ? rk : 'unknown';
+    chunks.push('<span class="badge rag-badge rag-badge-' + ragClass + '">' + escHtml(rag || '—') + '</span>');
+    if (score != null && score !== '') {
+      chunks.push(' <span class="job-preview-score">score ' + escHtml(String(score)) + '</span>');
+    }
+    chunks.push('</div>');
+  }
+  if (data.rag_reason) {
+    chunks.push(
+      '<p class="job-preview-reason-text"><span class="job-preview-label">Reason</span> '
+      + escHtml(data.rag_reason)
+      + '</p>'
+    );
+  }
+
+  const sid = data.search_id || '';
+  const sname = data.search_name || '';
+  if (sid || sname) {
+    chunks.push('<p class="job-preview-search-ref"><span class="job-preview-label">Matched search</span> ');
+    chunks.push(escHtml(sname || sid));
+    if (sid && sname && sid !== sname) {
+      chunks.push(' <code class="job-preview-code">' + escHtml(sid) + '</code>');
+    }
+    chunks.push('</p>');
+  }
+
+  function kwList(list, label, extraClass) {
+    if (!list || !list.length) return;
+    chunks.push('<div class="job-preview-term-group">');
+    chunks.push('<span class="job-preview-label">' + escHtml(label) + '</span>');
+    chunks.push('<ul class="job-preview-term-list ' + (extraClass || '') + '">');
+    for (const t of list) {
+      chunks.push('<li>' + escHtml(t) + '</li>');
+    }
+    chunks.push('</ul></div>');
+  }
+
+  kwList(data.search_keywords, 'Search phrases (from your query config)');
+  const rm = data.rag_matches || {};
+  kwList(Array.isArray(rm.title) ? rm.title : [], 'RAG · title signals');
+  kwList(Array.isArray(rm.domain) ? rm.domain : [], 'RAG · domain signals');
+  kwList(Array.isArray(rm.experience) ? rm.experience : [], 'RAG · experience signals');
+  kwList(data.tech_tools, 'Extracted tools');
+  kwList(data.sectors, 'Extracted sectors');
+
+  const hasRagLists =
+    (rm.title && rm.title.length) ||
+    (rm.domain && rm.domain.length) ||
+    (rm.experience && rm.experience.length);
+  if (!hasRagLists && data.rag_matches == null) {
+    chunks.push(
+      '<p class="job-preview-muted">No per-signal RAG lists in the database for this job — only the summary line above may be available.</p>'
+    );
+  }
+
+  chunks.push('</div>');
+  return chunks.join('');
+}
+
 function jobPreviewLegendHtml() {
   return '<span class="hl-key"><mark class="hl-search">Search</mark> <mark class="hl-rag-title">RAG title</mark> <mark class="hl-rag-domain">RAG domain</mark> <mark class="hl-rag-exp">RAG experience</mark> <mark class="hl-tech">Tools</mark> <mark class="hl-sector">Sectors</mark></span>';
 }
@@ -1419,7 +1493,6 @@ function ensureJobPreviewModal() {
     + '<div class="job-preview-dialog" role="dialog" aria-modal="true" aria-labelledby="jobPreviewTitle">'
     + '<button type="button" class="job-preview-close" data-close-preview="1" aria-label="Close">×</button>'
     + '<h3 id="jobPreviewTitle" class="job-preview-heading"></h3>'
-    + '<div id="jobPreviewLegend" class="job-preview-legend"></div>'
     + '<div id="jobPreviewBody" class="job-preview-body"></div>'
     + '<div class="job-preview-footer">'
     + '<a id="jobPreviewExternal" href="#" target="_blank" rel="noreferrer">Open original listing ↗</a>'
@@ -1438,11 +1511,9 @@ async function openJobPreview(title, company, source, fallbackUrl) {
   const modal = document.getElementById('jobPreviewModal');
   const bodyEl = document.getElementById('jobPreviewBody');
   const titleEl = document.getElementById('jobPreviewTitle');
-  const legendEl = document.getElementById('jobPreviewLegend');
   const ext = document.getElementById('jobPreviewExternal');
   titleEl.textContent = title || 'Job';
   ext.href = fallbackUrl || '#';
-  legendEl.innerHTML = jobPreviewLegendHtml();
   bodyEl.innerHTML = '<p class="job-preview-loading">Loading…</p>';
   modal.style.display = 'flex';
   try {
@@ -1460,8 +1531,13 @@ async function openJobPreview(title, company, source, fallbackUrl) {
     const data = await res.json();
     if (data.url) ext.href = data.url;
     if (data.title) titleEl.textContent = data.title;
-    const html = buildHighlightedDescriptionHtml(data.description || '', data);
-    bodyEl.innerHTML = html || '<p class="job-preview-empty">No description stored for this job (older rows or fetch gap).</p>';
+    const analysisHtml = buildJobAnalysisHtml(data);
+    const descHtml = buildHighlightedDescriptionHtml(data.description || '', data);
+    const legendHtml = '<div class="job-preview-legend-block">' + jobPreviewLegendHtml() + '</div>';
+    const proseSection =
+      '<h4 class="job-preview-section-title">Description (highlighted)</h4>'
+      + (descHtml || '<p class="job-preview-empty">No description stored for this job.</p>');
+    bodyEl.innerHTML = analysisHtml + legendHtml + proseSection;
   } catch (e) {
     bodyEl.innerHTML = '<p class="job-preview-error">' + escHtml(e.message) + '</p>';
   }

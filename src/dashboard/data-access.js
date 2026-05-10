@@ -74,7 +74,8 @@ export function getJobPreview(title, company, source) {
   const db = ensureReadonlyDb();
   if (!previewStmt) {
     previewStmt = db.prepare(`
-      SELECT description, rag_matches, search_id, sectors, tech_tools, title, url
+      SELECT description, rag_matches, search_id, sectors, tech_tools, title, url,
+             rag_rating, rag_score, rag_reason
       FROM jobs
       WHERE title = ? AND source = ? AND company = ?
     `);
@@ -99,7 +100,12 @@ export function getJobPreview(title, company, source) {
     title: row.title ?? '',
     url: row.url ?? '',
     description: row.description ?? '',
+    rag_rating: row.rag_rating ?? '',
+    rag_score: row.rag_score ?? null,
+    rag_reason: row.rag_reason ?? '',
     rag_matches: ragMatches,
+    search_id: row.search_id ?? '',
+    search_name: searchRow?.name ?? row.search_id ?? '',
     search_keywords: searchKeywords,
     sectors: row.sectors ? String(row.sectors).split('|').map((t) => t.trim()).filter(Boolean) : [],
     tech_tools: row.tech_tools ? String(row.tech_tools).split('|').map((t) => t.trim()).filter(Boolean) : [],
