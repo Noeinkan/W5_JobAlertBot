@@ -400,6 +400,38 @@ let sortDir    = 'asc';   // 'asc' | 'desc'
 let colFilters = {};      // { colKey: string }
 let globalQ    = '';
 
+/** Distinct non-empty values for a column — Excel-style filter source (full dataset, not filtered view). */
+function distinctValuesForColumn(key) {
+  const set = new Set();
+  for (const r of tableRows) {
+    const v = r[key];
+    if (v != null && v !== '') set.add(String(v));
+  }
+  return [...set].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+}
+
+/**
+ * Rebuilds every column filter <select> from current table rows.
+ * Initial HTML only runs once; row fields can change in place (e.g. outcome → discarded) so options must stay in sync.
+ */
+function syncColumnFilterSelectOptions() {
+  const card = document.getElementById('tableCard');
+  if (!card) return;
+  const filterRow = card.querySelector('thead tr.filter-row');
+  if (!filterRow) return;
+  for (const c of getCols()) {
+    if (c.type !== 'select') continue;
+    const sel = filterRow.querySelector('select[data-filter="' + c.key + '"]');
+    if (!sel) continue;
+    const cur = colFilters[c.key] || '';
+    let vals = distinctValuesForColumn(c.key);
+    if (cur && !vals.includes(cur)) vals = [...vals, cur].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+    sel.innerHTML = ['<option value="">All</option>']
+      .concat(vals.map(v => '<option value="' + escHtml(v) + '"' + (v === cur ? ' selected' : '') + '>' + escHtml(v) + '</option>'))
+      .join('');
+  }
+}
+
 function getVisible() {
   let rows = rowsPassingCross(tableRows);
 
@@ -478,6 +510,7 @@ function renderTable() {
     return '<td data-key="' + escHtml(c.key) + '"' + (c.wrap ? ' class="wrap"' : '') + ' title="' + escHtml(v) + '" style="width:' + escHtml(c.width) + ';max-width:' + escHtml(c.width) + '">' + cell + '</td>';
   }).join('') + '</tr>').join('');
 
+  syncColumnFilterSelectOptions();
   syncTableHorizontalScrollWidth();
   applyStickyColumnOffsets();
 }
@@ -494,7 +527,9 @@ function applyStickyColumnOffsets() {
   const wrap = document.getElementById('tableWrap');
   if (!wrap) return;
   const headerRow = wrap.querySelector('thead tr.header-row');
+  const filterRow = wrap.querySelector('thead tr.filter-row');
   if (!headerRow) return;
+  wrap.style.setProperty('--dash-header-row-height', headerRow.offsetHeight + 'px');
   wrap.querySelectorAll('thead th.col-sticky, tbody td.col-sticky').forEach(el => {
     el.classList.remove('col-sticky');
     el.style.left = '';
@@ -506,6 +541,11 @@ function applyStickyColumnOffsets() {
     if (key === 'url' || key === 'title') {
       th.classList.add('col-sticky');
       th.style.left = left + 'px';
+      const filterTh = filterRow && filterRow.querySelector('th[data-key="' + key + '"]');
+      if (filterTh) {
+        filterTh.classList.add('col-sticky');
+        filterTh.style.left = left + 'px';
+      }
       wrap.querySelectorAll('tbody td[data-key="' + key + '"]').forEach(td => {
         td.classList.add('col-sticky');
         td.style.left = left + 'px';
@@ -544,7 +584,7 @@ function buildTableHTML(rows) {
   const COLS = getCols();
   const opts = {};
   COLS.filter(c => c.type === 'select').forEach(c => {
-    opts[c.key] = [...new Set(rows.map(r => r[c.key] || '').filter(Boolean))].sort();
+    opts[c.key] = [...new Set(rows.map(r => r[c.key] != null && r[c.key] !== '' ? String(r[c.key]) : '').filter(Boolean))].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
   });
 
   const headerCells = COLS.map(c => {
@@ -563,7 +603,8 @@ function buildTableHTML(rows) {
   }).join('');
 
   const filterCells = COLS.map(c => {
-    const w = 'style="width:' + c.width + ';min-width:' + c.width + '"';
+    const wAttr = 'width:' + c.width + ';min-width:' + c.width + ';max-width:' + c.width;
+    const w = 'style="' + wAttr + '" data-key="' + escHtml(c.key) + '"';
     if (c.type === 'actions') return '<th ' + w + '></th>';
     if (c.type === 'select') {
       const cur = colFilters[c.key] || '';
