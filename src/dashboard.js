@@ -61,7 +61,7 @@ function getAllJobsForDashboard() {
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const RUNS_DIR = path.join(__dirname, '..', 'logs', 'runs');
-const CHART_BUNDLE = path.join(__dirname, '..', 'node_modules', 'chart.js', 'dist', 'chart.umd.min.js');
+const CHART_BUNDLE = path.join(__dirname, '..', 'node_modules', 'chart.js', 'dist', 'chart.umd.js');
 const ALL_JOBS_ID = '__all__.csv';
 
 const portArg = process.argv.indexOf('--port');
@@ -509,7 +509,7 @@ const HTML = /* html */`<!DOCTYPE html>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>Job Alert Bot — Run Dashboard</title>
-<script src="${BASE_PATH}/vendor/chart.umd.min.js"></script>
+<script src="${BASE_PATH}/vendor/chart.umd.js"></script>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 html{scroll-behavior:smooth;overflow-x:hidden;overflow-y:scroll}html,body{min-height:100vh}
@@ -1871,7 +1871,7 @@ const server = http.createServer((req, res) => {
     ? url.pathname.slice(BASE_PATH.length) || '/'
     : url.pathname;
 
-  if (pathname === '/vendor/chart.umd.min.js') {
+  if (pathname === '/vendor/chart.umd.js' || pathname === '/vendor/chart.umd.min.js') {
     if (!fs.existsSync(CHART_BUNDLE)) {
       res.writeHead(503, { 'Content-Type': 'text/plain; charset=utf-8' });
       res.end('Chart.js bundle missing (npm install chart.js).');
