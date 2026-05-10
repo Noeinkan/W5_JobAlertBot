@@ -1,5 +1,5 @@
 /**
- * Jobs / run_log DDL and migrations. Imported by db.js and dashboard.js so the
+ * Jobs / run_log DDL and migrations. Imported by db.js and dashboard/data-access.js so the
  * dashboard can migrate an older SQLite file without importing db.js (which
  * opens the default writer connection at load time).
  */
