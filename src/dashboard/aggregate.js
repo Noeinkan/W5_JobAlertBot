@@ -1,6 +1,8 @@
 import fs from 'fs';
 import {
   getAllJobsForDashboard,
+  getJobActionOverlayMap,
+  makeJobKey,
   rowFromDbJob,
 } from './data-access.js';
 
@@ -42,6 +44,32 @@ export function invalidateAggregateCache(filename) {
   aggregateCache.delete(filename);
 }
 
+/** Clear cached aggregates (e.g. after job-action updates SQLite — CSV files do not change on disk). */
+export function invalidateAllAggregateCaches() {
+  aggregateCache.clear();
+}
+
+/**
+ * Merge persisted applied/discarded from SQLite into CSV snapshot rows (same keys as /api/job-action).
+ */
+function applyJobActionOverlay(rows, overlayMap) {
+  for (const r of rows) {
+    const csvOutcome = r.outcome;
+    r._baseOutcome = csvOutcome;
+    const o = overlayMap.get(makeJobKey(r.title, r.company, r.source));
+    if (!o) {
+      r.applied = '0';
+      r.discarded = '0';
+      continue;
+    }
+    r.applied = o.applied ? '1' : '0';
+    r.discarded = o.discarded ? '1' : '0';
+    if (o.discarded) r.outcome = 'discarded';
+    else if (o.applied) r.outcome = 'applied';
+    else r.outcome = csvOutcome;
+  }
+}
+
 function getAggregate(filePath, filename) {
   const stat = fs.statSync(filePath);
   const cached = aggregateCache.get(filename);
@@ -51,7 +79,9 @@ function getAggregate(filePath, filename) {
     return cached.data;
   }
   const raw = fs.readFileSync(filePath, 'utf8');
-  const data = aggregate(parseCsv(raw));
+  const parsed = parseCsv(raw);
+  applyJobActionOverlay(parsed, getJobActionOverlayMap());
+  const data = aggregate(parsed);
   aggregateCache.set(filename, { mtimeMs: stat.mtimeMs, data });
   if (aggregateCache.size > AGG_CACHE_LIMIT) {
     const oldest = aggregateCache.keys().next().value;

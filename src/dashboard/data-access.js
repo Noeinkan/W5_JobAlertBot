@@ -19,6 +19,14 @@ export const ALL_JOBS_ID = '__all__.csv';
 let readonlyDb = null;
 let readonlyStmt = null;
 
+function ensureReadonlyDb() {
+  ensureDashboardJobsMigrated();
+  if (!readonlyDb) {
+    readonlyDb = new Database(appConfig.dbPath, { readonly: true, fileMustExist: true });
+  }
+  return readonlyDb;
+}
+
 let writeDb = null;
 export function getWriteDb() {
   if (!writeDb) {
@@ -41,10 +49,9 @@ export function ensureDashboardJobsMigrated() {
 }
 
 export function getAllJobsForDashboard() {
-  ensureDashboardJobsMigrated();
-  if (!readonlyDb) {
-    readonlyDb = new Database(appConfig.dbPath, { readonly: true, fileMustExist: true });
-    readonlyStmt = readonlyDb.prepare(`
+  const db = ensureReadonlyDb();
+  if (!readonlyStmt) {
+    readonlyStmt = db.prepare(`
       SELECT
         found_at, source, search_id, title, company, location,
         salary_text, salary_min, salary_max, is_contract, url, posted_at,
@@ -64,6 +71,32 @@ export function listCsvFiles() {
     ? fs.readdirSync(RUNS_DIR).filter(f => f.endsWith('.csv')).sort().reverse()
     : [];
   return [ALL_JOBS_ID, ...csvs];
+}
+
+/** Matches UNIQUE(title, company, source) / dashboard job-action UPDATE (company normalized to ''). */
+export function makeJobKey(title, company, source) {
+  return String(title ?? '') + '\0' + String(company ?? '') + '\0' + String(source ?? '');
+}
+
+/**
+ * Map job identity → applied/discarded flags from SQLite (dashboard writes these via /api/job-action).
+ * Used to overlay CSV run snapshots so Actions persist across reloads.
+ */
+export function getJobActionOverlayMap() {
+  const db = ensureReadonlyDb();
+  const rows = db.prepare(`
+    SELECT title, COALESCE(company, '') AS company, source,
+           COALESCE(applied, 0) AS applied, COALESCE(discarded, 0) AS discarded
+    FROM jobs
+  `).all();
+  const map = new Map();
+  for (const row of rows) {
+    map.set(makeJobKey(row.title, row.company, row.source), {
+      applied: !!row.applied,
+      discarded: !!row.discarded,
+    });
+  }
+  return map;
 }
 
 export function rowFromDbJob(job) {

@@ -56,6 +56,7 @@ const HELP_TEXT = {
 const COL_DEFS = [
   { key: 'url',         label: 'Link',        type: 'text',   defaultWidth: 72,  isLink: true, sticky: 1 },
   { key: 'title',       label: 'Title',       type: 'text',   defaultWidth: 220, sticky: 2 },
+  { key: 'posted_at',   label: 'Published',   type: 'text',   defaultWidth: 130 },
   { key: 'outcome',     label: 'Outcome',     type: 'select', defaultWidth: 130 },
   { key: 'rag_rating',  label: 'RAG',         type: 'select', defaultWidth: 72 },
   { key: 'rag_score',   label: 'Score',       type: 'text',   defaultWidth: 64 },
@@ -73,7 +74,6 @@ const COL_DEFS = [
   { key: 'remote_type', label: 'Remote',      type: 'select', defaultWidth: 88 },
   { key: 'sectors',     label: 'Sectors',     type: 'text',   defaultWidth: 130 },
   { key: 'clearances',  label: 'Clearance',   type: 'select', defaultWidth: 92 },
-  { key: 'posted_at',   label: 'Posted',      type: 'text',   defaultWidth: 110 },
   { key: 'found_at',    label: 'First seen',  type: 'text',   defaultWidth: 140 },
   { key: 'tech_tools',  label: 'Tools',       type: 'text',   defaultWidth: 180, wrap: true },
   { key: 'years_experience',       label: 'Years',       type: 'text', defaultWidth: 56 },
@@ -395,8 +395,10 @@ function initSectionToggles() {
 
 // ── Table state ───────────────────────────────────────────────────────────────
 let tableRows  = [];
-let sortCol    = null;
-let sortDir    = 'asc';   // 'asc' | 'desc'
+const DEFAULT_SORT_COL = 'posted_at';
+const DEFAULT_SORT_DIR = 'desc';
+let sortCol    = DEFAULT_SORT_COL;
+let sortDir    = DEFAULT_SORT_DIR;   // 'asc' | 'desc'
 let colFilters = {};      // { colKey: string }
 let globalQ    = '';
 
@@ -452,6 +454,21 @@ function getVisible() {
   // sort
   if (sortCol) {
     rows = [...rows].sort((a, b) => {
+      if (sortCol === 'posted_at' || sortCol === 'found_at') {
+        const parseTs = v => {
+          if (v == null || v === '') return null;
+          const t = Date.parse(String(v));
+          return Number.isNaN(t) ? null : t;
+        };
+        const ka = parseTs(a[sortCol]);
+        const kb = parseTs(b[sortCol]);
+        let cmp;
+        if (ka == null && kb == null) cmp = 0;
+        else if (ka == null) cmp = 1;
+        else if (kb == null) cmp = -1;
+        else cmp = ka - kb;
+        return sortDir === 'asc' ? cmp : -cmp;
+      }
       const av = (a[sortCol] || '').toLowerCase();
       const bv = (b[sortCol] || '').toLowerCase();
       const na = Number(a[sortCol]);
@@ -747,11 +764,13 @@ function initTableEvents() {
 
   const clearBtn = document.getElementById('clearFilters');
   if (clearBtn) clearBtn.addEventListener('click', () => {
-    globalQ = ''; sortCol = null; colFilters = {};
+    globalQ = ''; sortCol = DEFAULT_SORT_COL; sortDir = DEFAULT_SORT_DIR; colFilters = {};
     const gs = document.getElementById('globalSearch');
     if (gs) gs.value = '';
     card.querySelectorAll('[data-filter]').forEach(el => { el.value = ''; });
     document.querySelectorAll('thead tr.header-row th').forEach(h => h.classList.remove('asc', 'desc'));
+    const th = document.querySelector('thead tr.header-row th.sortable[data-key="' + sortCol + '"]');
+    if (th) th.classList.add(sortDir);
     renderTable();
   });
 
@@ -955,7 +974,7 @@ function render(data) {
   layoutState = loadLayoutState();
   lastDashboardData = data;
   tableRows = data.rows || [];
-  sortCol = null; sortDir = 'asc'; colFilters = {}; globalQ = ''; page = 1;
+  sortCol = DEFAULT_SORT_COL; sortDir = DEFAULT_SORT_DIR; colFilters = {}; globalQ = ''; page = 1;
   crossFilters = {};
   const analytics = data.analytics || {};
   const sequence = analytics.sequence || { labels: [], fetched: [], notified: [], filtered: [], cumulativeFetched: [], cumulativeNotified: [], cumulativeFiltered: [], control: { mean: 0, ucl: 0, lcl: 0 } };
@@ -1272,6 +1291,7 @@ function render(data) {
 
   initTableEvents();
   renderTable();
+  reapplySortHeaderClass();
   initHelpTips();
   initSectionToggles();
   renderFilterBar();

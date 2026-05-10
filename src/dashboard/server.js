@@ -12,7 +12,7 @@ import {
 import {
   getAllJobsAggregate,
   getCsvAggregate,
-  invalidateAggregateCache,
+  invalidateAllAggregateCaches,
 } from './aggregate.js';
 import {
   getBotProc,
@@ -179,7 +179,7 @@ export function createDashboardServer({ port, host, token, basePath }) {
           const db = getWriteDb();
           db.prepare('UPDATE jobs SET applied = ?, discarded = ? WHERE title = ? AND (company = ? OR (company IS NULL AND ? IS NULL)) AND source = ?')
             .run(applied ? 1 : 0, discarded ? 1 : 0, title, company || '', company || '', source);
-          invalidateAggregateCache(ALL_JOBS_ID);
+          invalidateAllAggregateCaches();
           res.writeHead(200, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ ok: true }));
         } catch (e) {
