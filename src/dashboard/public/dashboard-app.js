@@ -61,12 +61,12 @@ const COL_DEFS = [
   { key: 'title',       label: 'Title',       type: 'text',   defaultWidth: 220, sticky: 2 },
   { key: 'posted_at',   label: 'Published',   type: 'text',   defaultWidth: 130 },
   { key: 'outcome',     label: 'Outcome',     type: 'select', defaultWidth: 130 },
-  { key: 'rag_rating',  label: 'RAG',         type: 'select', defaultWidth: 72 },
-  { key: 'rag_score',   label: 'Score',       type: 'text',   defaultWidth: 64 },
-  { key: 'rag_reason',  label: 'Reason',      type: 'text',   defaultWidth: 200, wrap: true },
   { key: 'profile_rating', label: 'Profile',  type: 'select', defaultWidth: 72 },
   { key: 'profile_score',  label: 'Prof score', type: 'text', defaultWidth: 72 },
   { key: 'profile_reason', label: 'Prof reason', type: 'text', defaultWidth: 180, wrap: true },
+  { key: 'rag_rating',  label: 'RAG',         type: 'select', defaultWidth: 72 },
+  { key: 'rag_score',   label: 'Score',       type: 'text',   defaultWidth: 64 },
+  { key: 'rag_reason',  label: 'Reason',      type: 'text',   defaultWidth: 200, wrap: true },
   { key: 'company',     label: 'Company',     type: 'text',   defaultWidth: 140 },
   { key: 'location',    label: 'Location',    type: 'text',   defaultWidth: 130 },
   { key: 'source',      label: 'Source',      type: 'select', defaultWidth: 100 },
@@ -1403,6 +1403,7 @@ function collectHighlightSpans(text, payload) {
   const pm = payload.profile_matches || {};
   if (Array.isArray(pm.positive)) addTerms(pm.positive, 82, 'hl-profile-pos');
   if (Array.isArray(pm.negative)) addTerms(pm.negative, 77, 'hl-profile-neg');
+  if (Array.isArray(pm.titlePositive)) addTerms(pm.titlePositive, 81, 'hl-profile-title-pos');
   if (Array.isArray(pm.titleNegative)) addTerms(pm.titleNegative, 83, 'hl-profile-title');
   addTerms(payload.tech_tools, 55, 'hl-tech');
   addTerms(payload.sectors, 45, 'hl-sector');
@@ -1480,6 +1481,15 @@ function buildJobAnalysisHtml(data) {
     );
   }
 
+  const pmEarly = data.profile_matches || {};
+  if (pmEarly.northStar) {
+    chunks.push(
+      '<p class="job-preview-north-star"><span class="job-preview-label">North star</span> '
+      + escHtml(pmEarly.northStar)
+      + '</p>'
+    );
+  }
+
   const sid = data.search_id || '';
   const sname = data.search_name || '';
   if (sid || sname) {
@@ -1509,8 +1519,21 @@ function buildJobAnalysisHtml(data) {
   kwList(Array.isArray(rm.experience) ? rm.experience : [], 'RAG · experience signals');
   const pm = data.profile_matches || {};
   kwList(Array.isArray(pm.positive) ? pm.positive : [], 'Profile · positive signals');
+  kwList(Array.isArray(pm.titlePositive) ? pm.titlePositive : [], 'Profile · title positive');
   kwList(Array.isArray(pm.negative) ? pm.negative : [], 'Profile · downrank signals');
-  kwList(Array.isArray(pm.titleNegative) ? pm.titleNegative : [], 'Profile · title signals');
+  kwList(Array.isArray(pm.titleNegative) ? pm.titleNegative : [], 'Profile · title downrank');
+  if (pm.dimensionScores && typeof pm.dimensionScores === 'object') {
+    const pairs = Object.entries(pm.dimensionScores).filter(([, v]) => v != null && v !== '');
+    if (pairs.length) {
+      chunks.push('<div class="job-preview-term-group">');
+      chunks.push('<span class="job-preview-label">Profile · dimension scores (capped)</span>');
+      chunks.push('<ul class="job-preview-term-list">');
+      for (const [dk, dv] of pairs) {
+        chunks.push('<li><code>' + escHtml(dk) + '</code>: ' + escHtml(String(dv)) + '</li>');
+      }
+      chunks.push('</ul></div>');
+    }
+  }
   kwList(data.tech_tools, 'Extracted tools');
   kwList(data.sectors, 'Extracted sectors');
 
@@ -1529,7 +1552,7 @@ function buildJobAnalysisHtml(data) {
 }
 
 function jobPreviewLegendHtml() {
-  return '<span class="hl-key"><mark class="hl-search">Search</mark> <mark class="hl-rag-title">RAG title</mark> <mark class="hl-rag-domain">RAG domain</mark> <mark class="hl-rag-exp">RAG experience</mark> <mark class="hl-profile-pos">Profile +</mark> <mark class="hl-profile-neg">Profile −</mark> <mark class="hl-tech">Tools</mark> <mark class="hl-sector">Sectors</mark></span>';
+  return '<span class="hl-key"><mark class="hl-search">Search</mark> <mark class="hl-rag-title">RAG title</mark> <mark class="hl-rag-domain">RAG domain</mark> <mark class="hl-rag-exp">RAG experience</mark> <mark class="hl-profile-pos">Profile +</mark> <mark class="hl-profile-title-pos">Title +</mark> <mark class="hl-profile-neg">Profile −</mark> <mark class="hl-tech">Tools</mark> <mark class="hl-sector">Sectors</mark></span>';
 }
 
 function ensureJobPreviewModal() {
@@ -1657,7 +1680,47 @@ async function loadTrend() {
   } catch { /* silently skip trend chart on errors */ }
 }
 
+async function renderProfileFitBanner() {
+  const mount = document.getElementById('profileFitMount');
+  if (!mount) return;
+  const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+  try {
+    const res = await fetch(API_BASE + '/api/profile-summary');
+    const data = await res.json();
+    const enabled = !!data.enabled;
+    const badgeClass = enabled ? 'profile-fit-badge profile-fit-badge--on' : 'profile-fit-badge profile-fit-badge--off';
+    const badgeText = enabled ? 'Profile fit ON' : 'Profile fit OFF';
+    const pathBits = String(data.profilePath || '').replace(/\\/g, '/').split('/').filter(Boolean);
+    const pathShort = pathBits.length >= 2 ? pathBits.slice(-2).join('/') : (data.profilePath || '');
+    let body = '';
+    if (!enabled) {
+      body = '<p class="profile-fit-note">CV-aligned scoring is disabled. Set <code>PROFILE_FIT_ENABLED=true</code> in <code>.env</code> (or remove <code>PROFILE_FIT_ENABLED=false</code>) and restart the bot.</p>';
+    } else if (data.ok === false && data.error === 'file_missing') {
+      body = '<p class="profile-fit-note profile-fit-note--warn">Profile file missing at <code>' + esc(data.profilePath) + '</code>.</p>';
+    } else if (data.ok === false) {
+      body = '<p class="profile-fit-note profile-fit-note--warn">' + esc(data.error || 'Could not read profile JSON') + '</p>';
+    } else if (data.northStar) {
+      body = '<p class="profile-fit-north-star"><strong>North star</strong> — ' + esc(data.northStar) + '</p>';
+    }
+    const ver = data.version != null ? '<span class="profile-fit-meta">schema v' + esc(data.version) + '</span>' : '';
+    mount.innerHTML =
+      '<section class="profile-fit-strip" aria-label="Profile fit summary">'
+      + '<div class="profile-fit-strip-head">'
+      + '<span class="' + badgeClass + '">' + badgeText + '</span>'
+      + '<span class="profile-fit-title">CV-aligned second score</span>'
+      + ver
+      + '</div>'
+      + '<div class="profile-fit-strip-path" title="' + esc(data.profilePath) + '">' + esc(pathShort || data.profilePath || '') + '</div>'
+      + body
+      + '<p class="profile-fit-hint">Table columns <strong>Profile</strong> / <strong>Prof score</strong> / <strong>Prof reason</strong> · tune patterns in <code>data/profile.json</code></p>'
+      + '</section>';
+  } catch (e) {
+    mount.innerHTML = '<section class="profile-fit-strip profile-fit-strip--error">Could not load profile summary.</section>';
+  }
+}
+
 async function init() {
+  await renderProfileFitBanner();
   const res = await fetch(API_BASE + '/api/files');
   const files = await res.json();
   const sel = document.getElementById('fileSelect');

@@ -55,3 +55,46 @@ test('scoreProfileFit returns Amber when no profile signals fire', () => {
   assert.equal(out.score, 0);
   assert.equal(out.reason, null);
 });
+
+test('aliasOf compiles and matches like an inlined pattern', () => {
+  clearProfileFitCache();
+  const p = path.join(__dirname, 'fixtures', 'profile-alias.json');
+  const out = scoreProfileFit({ title: 'X', description: 'Say hello to the team.' }, p);
+  assert.equal(out.rating, 'Green');
+  assert.ok(out.matches.positive.includes('Greeting alias'));
+});
+
+test('capPerDimension limits stacked weights in one dimension', () => {
+  clearProfileFitCache();
+  const p = path.join(__dirname, 'fixtures', 'profile-cap.json');
+  const out = scoreProfileFit({ title: 'Role', description: 'iso iso standards' }, p);
+  assert.equal(out.score, 10);
+  assert.equal(out.matches.dimensionScores.im_bim, 10);
+  assert.equal(out.rating, 'Amber');
+});
+
+test('vetoNegativeTotalBelow forces Red despite high positives', () => {
+  clearProfileFitCache();
+  const p = path.join(__dirname, 'fixtures', 'profile-veto.json');
+  const out = scoreProfileFit(
+    { title: 'T', description: 'goodsignal and badsignal together.' },
+    p,
+  );
+  assert.equal(out.rating, 'Red');
+  assert.ok(out.reason.includes('Veto'));
+});
+
+test('requireAtLeastOnePositiveInDimensions downgrades Green to Amber when gate fails', () => {
+  clearProfileFitCache();
+  const p = path.join(__dirname, 'fixtures', 'profile-gate-downgrade.json');
+  const out = scoreProfileFit(
+    {
+      title: 'Energy analyst',
+      description: 'National transmission programme and grid reliability.',
+    },
+    p,
+  );
+  assert.ok(out.score >= 5);
+  assert.equal(out.rating, 'Amber');
+  assert.ok(out.reason.includes('Gate'));
+});

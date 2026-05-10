@@ -1,0 +1,24 @@
+{
+  "version": 2,
+  "greenThreshold": 5,
+  "amberThreshold": 2,
+  "aliases": {
+    "greeting": ["\\bhello\\b", "\\bhi\\b"]
+  },
+  "aggregation": {
+    "mode": "sum",
+    "capPerDimension": 100
+  },
+  "positivePatterns": [
+    {
+      "aliasOf": "greeting",
+      "weight": 10,
+      "label": "Greeting alias",
+      "dimension": "general",
+      "tier": "preferred"
+    }
+  ],
+  "negativePatterns": [],
+  "titleNegativePatterns": [],
+  "titlePositivePatterns": []
+}

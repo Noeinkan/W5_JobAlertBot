@@ -160,7 +160,13 @@ export const env = {
   logLevel: process.env.LOG_LEVEL ?? 'debug',
   startupRunOnBoot: String(process.env.STARTUP_RUN_ON_BOOT ?? 'false').toLowerCase() === 'true',
   runOnce: process.argv.includes('--once') || String(process.env.RUN_ONCE ?? 'false').toLowerCase() === 'true',
-  profileFitEnabled: ['true', '1', 'yes'].includes(String(process.env.PROFILE_FIT_ENABLED ?? '').toLowerCase()),
+  profileFitEnabled: (() => {
+    const v = process.env.PROFILE_FIT_ENABLED;
+    if (v === undefined || v === '') return true;
+    const s = String(v).toLowerCase();
+    if (['false', '0', 'no', 'off'].includes(s)) return false;
+    return true;
+  })(),
   profileFitPath: process.env.PROFILE_FIT_PATH
     ? path.resolve(process.cwd(), process.env.PROFILE_FIT_PATH)
     : path.join(dataDir, 'profile.json'),

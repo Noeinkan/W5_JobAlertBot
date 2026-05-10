@@ -114,12 +114,27 @@ cp .env.example .env
 
 ### Profile fit (CV-aligned second score)
 
-When enabled, each job is scored against [`data/profile.json`](data/profile.json) after the lexicon RAG pass. Jobs with **Profile Red** are stored with `filter_reason = filtered_profile` and are **not** notified on Discord. The lexicon RAG columns (`rag_*`) stay independent so you can compare both layers in the dashboard.
+Each job can be scored against [`data/profile.json`](data/profile.json) after the lexicon RAG pass. Jobs with **Profile Red** are stored with `filter_reason = filtered_profile` and are **not** notified on Discord. The lexicon RAG columns (`rag_*`) stay independent so you can compare both layers in the dashboard.
 
-- `PROFILE_FIT_ENABLED`: set to `true`, `1`, or `yes` to turn on (default: off)
+- `PROFILE_FIT_ENABLED`: **on by default** (unset or empty). Set to `false`, `0`, `no`, or `off` to disable CV-aligned scoring for the bot process.
 - `PROFILE_FIT_PATH`: optional path to an alternate profile JSON (defaults to `data/profile.json` relative to the project root)
 
-Edit the patterns and thresholds in `data/profile.json` to match your CV — positives, negatives with optional `unless` rescue lists, and optional `titleNegativePatterns`.
+The **dashboard** shows a **Profile fit** strip at the top (north star, config path, on/off) and table columns **Profile** / **Prof score** / **Prof reason** ahead of lexicon RAG when viewing runs or all jobs.
+
+Edit [`data/profile.json`](data/profile.json) to match your CV. **Lexicon RAG** (`rag_*` columns) and **profile fit** (`profile_*`) are independent layers.
+
+**Schema (version 2):**
+
+| Field | Meaning |
+|--------|---------|
+| `northStar` | Short narrative of your target roles — not scored; echoed in dashboard/job metadata for context. |
+| `dimensions` | Optional map of dimension ids to `{ label }` for documentation only. |
+| `aliases` | Map of alias keys to arrays of regex strings; patterns may use `"aliasOf": "key"` instead of repeating regex. |
+| `positivePatterns` / `titlePositivePatterns` | Body vs title-only positives; each row: `pattern` **or** `aliasOf`, `weight`, `label`, `dimension` (default `general`), `tier` (`preferred` \| `required`). |
+| `negativePatterns` / `titleNegativePatterns` | Same as before; optional `unless` rescue regex list. |
+| `aggregation` | `capPerDimension` (max points per dimension from positives), `vetoNegativeTotalBelow` (force Red if combined negatives ≤ threshold), `requireAtLeastOnePositiveInDimensions` (all listed ids must have a positive hit for **Green**), `missingRequiredDimensionsRating` (`Amber` or `Red` when that gate fails). |
+
+Omitted keys keep legacy behaviour: no caps, no veto, no dimension gate.
 
 ## API Registration Links
 

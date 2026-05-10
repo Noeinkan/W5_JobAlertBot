@@ -1,0 +1,28 @@
+{
+  "version": 2,
+  "greenThreshold": 15,
+  "amberThreshold": 8,
+  "aggregation": {
+    "mode": "sum",
+    "capPerDimension": 10
+  },
+  "positivePatterns": [
+    {
+      "pattern": "iso",
+      "weight": 8,
+      "label": "ISO a",
+      "dimension": "im_bim",
+      "tier": "preferred"
+    },
+    {
+      "pattern": "iso",
+      "weight": 8,
+      "label": "ISO b",
+      "dimension": "im_bim",
+      "tier": "preferred"
+    }
+  ],
+  "negativePatterns": [],
+  "titleNegativePatterns": [],
+  "titlePositivePatterns": []
+}

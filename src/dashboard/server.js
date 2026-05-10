@@ -22,8 +22,43 @@ import {
   startBot,
 } from './bot-process.js';
 import { tokenOk } from './auth.js';
+import { env } from '../config.js';
 
-function buildDashboardHtml(basePath) {
+function readProfileSummary() {
+  const profilePath = env.profileFitPath;
+  const enabled = env.profileFitEnabled;
+  try {
+    if (!fs.existsSync(profilePath)) {
+      return {
+        enabled,
+        profilePath,
+        ok: false,
+        error: 'file_missing',
+        northStar: '',
+        version: null,
+      };
+    }
+    const data = JSON.parse(fs.readFileSync(profilePath, 'utf8'));
+    return {
+      enabled,
+      profilePath,
+      ok: true,
+      version: data.version ?? null,
+      northStar: typeof data.northStar === 'string' ? data.northStar : '',
+    };
+  } catch (e) {
+    return {
+      enabled,
+      profilePath,
+      ok: false,
+      error: e.message,
+      northStar: '',
+      version: null,
+    };
+  }
+}
+
+function buildDashboardHtml(basePath, profileFitEnabled) {
   const bp = basePath || '';
   return `<!DOCTYPE html>
 <html lang="en">
@@ -34,6 +69,7 @@ function buildDashboardHtml(basePath) {
 <link rel="stylesheet" href="${bp}/dashboard.css"/>
 <script src="${bp}/vendor/chart.umd.js"></script>
 <script>window.__DASHBOARD_BASE__=${JSON.stringify(basePath)};</script>
+<script>window.__PROFILE_FIT_ENABLED__=${JSON.stringify(profileFitEnabled)};</script>
 <script src="${bp}/dashboard-app.js" defer></script>
 </head>
 <body>
@@ -49,6 +85,7 @@ function buildDashboardHtml(basePath) {
   </div>
 </header>
 <div id="preMain">
+  <div id="profileFitMount" class="profile-fit-mount"></div>
   <section class="section" data-section="log" id="logSection" style="display:none">
     <div class="section-header">
       <span class="chev">▶</span>
@@ -93,7 +130,7 @@ function serveStatic(res, filePath, contentType, cacheControl = 'public, max-age
 }
 
 export function createDashboardServer({ port, host, token, basePath }) {
-  const HTML = buildDashboardHtml(basePath);
+  const HTML = buildDashboardHtml(basePath, env.profileFitEnabled);
 
   return http.createServer((req, res) => {
     const url = new URL(req.url, `http://localhost:${port}`);
@@ -122,6 +159,12 @@ export function createDashboardServer({ port, host, token, basePath }) {
 
     if (pathname === '/dashboard-app.js') {
       serveStatic(res, path.join(PUBLIC_DIR, 'dashboard-app.js'), 'application/javascript; charset=utf-8');
+      return;
+    }
+
+    if (pathname === '/api/profile-summary') {
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify(readProfileSummary()));
       return;
     }
 

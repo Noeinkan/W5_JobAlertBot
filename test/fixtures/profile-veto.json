@@ -1,0 +1,29 @@
+{
+  "version": 2,
+  "greenThreshold": 10,
+  "amberThreshold": 4,
+  "aggregation": {
+    "mode": "sum",
+    "capPerDimension": 100,
+    "vetoNegativeTotalBelow": -8
+  },
+  "positivePatterns": [
+    {
+      "pattern": "goodsignal",
+      "weight": 50,
+      "label": "Good",
+      "dimension": "general",
+      "tier": "preferred"
+    }
+  ],
+  "negativePatterns": [
+    {
+      "pattern": "badsignal",
+      "weight": -10,
+      "label": "Bad",
+      "unless": []
+    }
+  ],
+  "titleNegativePatterns": [],
+  "titlePositivePatterns": []
+}
