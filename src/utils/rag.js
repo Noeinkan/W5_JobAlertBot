@@ -101,9 +101,10 @@ export function scoreJob(job) {
   const desc = (job.description || '').toLowerCase();
   const fullText = title + ' ' + desc;
 
+  const emptyMatches = { title: [], domain: [], experience: [] };
   for (const blocker of NON_AEC_BLOCKERS) {
     if (blocker.test(title)) {
-      return { rating: 'Red', score: -99, reason: 'Non-AEC role' };
+      return { rating: 'Red', score: -99, reason: 'Non-AEC role', matches: emptyMatches };
     }
   }
 
@@ -155,5 +156,11 @@ export function scoreJob(job) {
   if (experienceMatches.length > 0) parts.push(`Experience: ${experienceMatches.slice(0, 2).join(', ')}`);
   const reason = parts.length > 0 ? parts.join(' · ') : null;
 
-  return { rating, score, reason };
+  const matches = {
+    title: titleMatches,
+    domain: domainMatches,
+    experience: experienceMatches,
+  };
+
+  return { rating, score, reason, matches };
 }

@@ -7,6 +7,7 @@ import {
   PUBLIC_DIR,
   RUNS_DIR,
   getWriteDb,
+  getJobPreview,
   listCsvFiles,
 } from './data-access.js';
 import {
@@ -186,6 +187,32 @@ export function createDashboardServer({ port, host, token, basePath }) {
           res.writeHead(500); res.end(e.message);
         }
       });
+      return;
+    }
+
+    if (pathname === '/api/job-preview' && req.method === 'GET') {
+      if (!tokenOk(req, res, token)) return;
+      const title = url.searchParams.get('title') ?? '';
+      const company = url.searchParams.get('company') ?? '';
+      const source = url.searchParams.get('source') ?? '';
+      if (!title || !source) {
+        res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ error: 'Missing title or source' }));
+        return;
+      }
+      try {
+        const preview = getJobPreview(title, company, source);
+        if (!preview) {
+          res.writeHead(404, { 'Content-Type': 'application/json; charset=utf-8' });
+          res.end(JSON.stringify({ error: 'Job not found in database' }));
+          return;
+        }
+        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify(preview));
+      } catch (e) {
+        res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ error: e.message }));
+      }
       return;
     }
 

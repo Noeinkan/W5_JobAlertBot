@@ -6,7 +6,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import Database from 'better-sqlite3';
-import { appConfig } from '../config.js';
+import { appConfig, loadSearches } from '../config.js';
 import { ensureJobsSchema } from '../jobs-schema.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -64,6 +64,46 @@ export function getAllJobsForDashboard() {
     `);
   }
   return readonlyStmt.all();
+}
+
+let previewStmt = null;
+/**
+ * Job description + highlight metadata for dashboard modal (unique key: title, company, source).
+ */
+export function getJobPreview(title, company, source) {
+  const db = ensureReadonlyDb();
+  if (!previewStmt) {
+    previewStmt = db.prepare(`
+      SELECT description, rag_matches, search_id, sectors, tech_tools, title, url
+      FROM jobs
+      WHERE title = ? AND source = ? AND company = ?
+    `);
+  }
+  const row = previewStmt.get(String(title ?? ''), String(source ?? ''), String(company ?? ''));
+  if (!row) return null;
+
+  let ragMatches = null;
+  if (row.rag_matches) {
+    try {
+      ragMatches = JSON.parse(row.rag_matches);
+    } catch {
+      ragMatches = null;
+    }
+  }
+
+  const searches = loadSearches();
+  const searchRow = searches.find((s) => s.id === row.search_id);
+  const searchKeywords = searchRow?.keywords?.length ? [...searchRow.keywords] : [];
+
+  return {
+    title: row.title ?? '',
+    url: row.url ?? '',
+    description: row.description ?? '',
+    rag_matches: ragMatches,
+    search_keywords: searchKeywords,
+    sectors: row.sectors ? String(row.sectors).split('|').map((t) => t.trim()).filter(Boolean) : [],
+    tech_tools: row.tech_tools ? String(row.tech_tools).split('|').map((t) => t.trim()).filter(Boolean) : [],
+  };
 }
 
 export function listCsvFiles() {

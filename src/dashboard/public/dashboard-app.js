@@ -55,7 +55,7 @@ const HELP_TEXT = {
 
 // ── Table columns (canonical defs + sensible default order) ──────────────────
 const COL_DEFS = [
-  { key: 'url',         label: 'Link',        type: 'text',   defaultWidth: 72,  isLink: true, sticky: 1 },
+  { key: 'url',         label: 'Link',        type: 'text',   defaultWidth: 100, isLink: true, sticky: 1 },
   { key: 'title',       label: 'Title',       type: 'text',   defaultWidth: 220, sticky: 2 },
   { key: 'posted_at',   label: 'Published',   type: 'text',   defaultWidth: 130 },
   { key: 'outcome',     label: 'Outcome',     type: 'select', defaultWidth: 130 },
@@ -495,7 +495,10 @@ function renderTable() {
   // body
   const tbody = document.getElementById('tBody');
   const cols = getCols();
-  tbody.innerHTML = visible.map(r => '<tr>' + cols.map(c => {
+  tbody.innerHTML = visible.map(r => {
+    const muted = r.discarded === '1' || r.expired === '1';
+    const trOpen = muted ? '<tr class="row-muted">' : '<tr>';
+    return trOpen + cols.map(c => {
     const v = r[c.key] ?? '';
     let cell;
     if (c.key === '_actions') {
@@ -512,7 +515,12 @@ function renderTable() {
            + '<button class="action-btn act-expire' + (expiredActive ? ' active' : '') + '" data-act="expired" data-title="' + t + '" data-company="' + co + '" data-source="' + s + '" title="' + (expiredActive ? 'Undo expired' : 'Mark as expired') + '">'
            + (expiredActive ? '⌛ Expired' : 'Expired') + '</button>';
     } else if (c.isLink && v) {
-      cell = '<a href="' + escHtml(v) + '" target="_blank" rel="noreferrer">open ↗</a>';
+      const t  = escHtml(r.title   || '');
+      const co = escHtml(r.company || '');
+      const s  = escHtml(r.source  || '');
+      const u  = escHtml(v);
+      cell = '<a href="' + u + '" target="_blank" rel="noreferrer">open ↗</a>'
+        + ' <button type="button" class="job-preview-btn" data-title="' + t + '" data-company="' + co + '" data-source="' + s + '" data-url="' + u + '" title="Stored job text with search and RAG highlights">highlights</button>';
     } else if (c.isRate && v) {
       const cls = r.rateType === 'day' ? 'rate-day' : 'rate-hour';
       cell = '<span class="badge ' + cls + '">' + escHtml(v) + '</span>';
@@ -531,7 +539,8 @@ function renderTable() {
       cell = escHtml(v);
     }
     return '<td data-key="' + escHtml(c.key) + '"' + (c.wrap ? ' class="wrap"' : '') + ' title="' + escHtml(v) + '" style="width:' + escHtml(c.width) + ';max-width:' + escHtml(c.width) + '">' + cell + '</td>';
-  }).join('') + '</tr>').join('');
+  }).join('') + '</tr>';
+  }).join('');
 
   syncColumnFilterSelectOptions();
   syncTableHorizontalScrollWidth();
@@ -931,6 +940,18 @@ function initTableEvents() {
 
   // ── Action buttons (Applied / Not relevant) ─────────────────────────────
   document.getElementById('tBody').addEventListener('click', async e => {
+    const previewBtn = e.target.closest('.job-preview-btn');
+    if (previewBtn) {
+      e.preventDefault();
+      e.stopPropagation();
+      openJobPreview(
+        previewBtn.getAttribute('data-title') || '',
+        previewBtn.getAttribute('data-company') || '',
+        previewBtn.getAttribute('data-source') || '',
+        previewBtn.getAttribute('data-url') || ''
+      );
+      return;
+    }
     const btn = e.target.closest('[data-act]');
     if (!btn) return;
     const act     = btn.dataset.act;      // 'applied' | 'discarded' | 'expired'
@@ -1319,6 +1340,131 @@ function render(data) {
 // ── Utilities ─────────────────────────────────────────────────────────────────
 function escHtml(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function mergeHighlightSpans(spans) {
+  spans.sort((a, b) => a.start - b.start || b.priority - a.priority);
+  const chosen = [];
+  for (const s of spans) {
+    if (chosen.some(c => s.start < c.end && s.end > c.start)) continue;
+    chosen.push(s);
+  }
+  chosen.sort((a, b) => a.start - b.start);
+  return chosen;
+}
+
+function collectHighlightSpans(text, payload) {
+  const spans = [];
+  const lowerFull = text.toLowerCase();
+  const addTerms = (terms, priority, cls) => {
+    const dedup = [...new Set((terms || []).map(t => String(t).trim()).filter(t => t.length >= 2))];
+    dedup.sort((a, b) => b.length - a.length);
+    for (const term of dedup) {
+      const n = term.toLowerCase();
+      let i = 0;
+      while (i < lowerFull.length) {
+        const j = lowerFull.indexOf(n, i);
+        if (j === -1) break;
+        spans.push({
+          start: j,
+          end: j + term.length,
+          priority,
+          className: cls,
+        });
+        i = j + 1;
+      }
+    }
+  };
+  addTerms(payload.search_keywords, 100, 'hl-search');
+  const rm = payload.rag_matches || {};
+  if (Array.isArray(rm.title)) addTerms(rm.title, 85, 'hl-rag-title');
+  if (Array.isArray(rm.domain)) addTerms(rm.domain, 80, 'hl-rag-domain');
+  if (Array.isArray(rm.experience)) addTerms(rm.experience, 75, 'hl-rag-exp');
+  addTerms(payload.tech_tools, 55, 'hl-tech');
+  addTerms(payload.sectors, 45, 'hl-sector');
+  return mergeHighlightSpans(spans);
+}
+
+function applyHighlightSpans(text, chosen) {
+  let out = '';
+  let pos = 0;
+  for (const s of chosen) {
+    out += escHtml(text.slice(pos, s.start));
+    out += '<mark class="' + escHtml(s.className) + '">' + escHtml(text.slice(s.start, s.end)) + '</mark>';
+    pos = s.end;
+  }
+  out += escHtml(text.slice(pos));
+  return out;
+}
+
+function buildHighlightedDescriptionHtml(text, payload) {
+  const raw = String(text || '');
+  if (!raw.trim()) return '';
+  const spans = collectHighlightSpans(raw, payload);
+  const body = applyHighlightSpans(raw, spans);
+  return '<div class="job-preview-prose">' + body.replace(/\n/g, '<br/>') + '</div>';
+}
+
+function jobPreviewLegendHtml() {
+  return '<span class="hl-key"><mark class="hl-search">Search</mark> <mark class="hl-rag-title">RAG title</mark> <mark class="hl-rag-domain">RAG domain</mark> <mark class="hl-rag-exp">RAG experience</mark> <mark class="hl-tech">Tools</mark> <mark class="hl-sector">Sectors</mark></span>';
+}
+
+function ensureJobPreviewModal() {
+  if (document.getElementById('jobPreviewModal')) return;
+  const wrap = document.createElement('div');
+  wrap.id = 'jobPreviewModal';
+  wrap.className = 'job-preview-modal';
+  wrap.innerHTML =
+    '<div class="job-preview-backdrop" data-close-preview="1"></div>'
+    + '<div class="job-preview-dialog" role="dialog" aria-modal="true" aria-labelledby="jobPreviewTitle">'
+    + '<button type="button" class="job-preview-close" data-close-preview="1" aria-label="Close">×</button>'
+    + '<h3 id="jobPreviewTitle" class="job-preview-heading"></h3>'
+    + '<div id="jobPreviewLegend" class="job-preview-legend"></div>'
+    + '<div id="jobPreviewBody" class="job-preview-body"></div>'
+    + '<div class="job-preview-footer">'
+    + '<a id="jobPreviewExternal" href="#" target="_blank" rel="noreferrer">Open original listing ↗</a>'
+    + '</div></div>';
+  document.body.appendChild(wrap);
+  wrap.addEventListener('click', e => {
+    if (e.target.dataset.closePreview != null) wrap.style.display = 'none';
+  });
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') wrap.style.display = 'none';
+  });
+}
+
+async function openJobPreview(title, company, source, fallbackUrl) {
+  ensureJobPreviewModal();
+  const modal = document.getElementById('jobPreviewModal');
+  const bodyEl = document.getElementById('jobPreviewBody');
+  const titleEl = document.getElementById('jobPreviewTitle');
+  const legendEl = document.getElementById('jobPreviewLegend');
+  const ext = document.getElementById('jobPreviewExternal');
+  titleEl.textContent = title || 'Job';
+  ext.href = fallbackUrl || '#';
+  legendEl.innerHTML = jobPreviewLegendHtml();
+  bodyEl.innerHTML = '<p class="job-preview-loading">Loading…</p>';
+  modal.style.display = 'flex';
+  try {
+    const q = new URLSearchParams({ title, company: company || '', source });
+    const res = await fetchWithDashboardToken(API_BASE + '/api/job-preview?' + q.toString());
+    if (!res.ok) {
+      let msg = res.statusText;
+      try {
+        const err = await res.json();
+        if (err.error) msg = err.error;
+      } catch { /* ignore */ }
+      bodyEl.innerHTML = '<p class="job-preview-error">' + escHtml(msg) + '</p>';
+      return;
+    }
+    const data = await res.json();
+    if (data.url) ext.href = data.url;
+    if (data.title) titleEl.textContent = data.title;
+    const html = buildHighlightedDescriptionHtml(data.description || '', data);
+    bodyEl.innerHTML = html || '<p class="job-preview-empty">No description stored for this job (older rows or fetch gap).</p>';
+  } catch (e) {
+    bodyEl.innerHTML = '<p class="job-preview-error">' + escHtml(e.message) + '</p>';
+  }
 }
 
 // ── Boot ──────────────────────────────────────────────────────────────────────

@@ -9,6 +9,7 @@ export const JOB_COLUMN_ADDITIONS = [
   ['rag_rating', 'TEXT'],
   ['rag_score', 'INTEGER'],
   ['rag_reason', 'TEXT'],
+  ['rag_matches', 'TEXT'],
   ['seniority_passed', 'INTEGER'],
   ['salary_passed', 'INTEGER'],
   ['filter_reason', 'TEXT'],

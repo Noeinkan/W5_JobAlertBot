@@ -233,7 +233,7 @@ async function runSearchCycle(trigger = 'scheduled') {
 
             const salaryPassed = passesMinimumSalary(job, search.min_salary);
             const seniority = isSeniorEnough(job);
-            const { rating, score, reason } = scoreJob(job);
+            const { rating, score, reason, matches } = scoreJob(job);
 
             let filterReason = null;
             if (!salaryPassed) {
@@ -254,6 +254,7 @@ async function runSearchCycle(trigger = 'scheduled') {
                 ragRating: rating,
                 ragScore: score,
                 ragReason: reason,
+                ragMatches: matches,
                 seniorityPassed: seniority.passes,
                 salaryPassed,
                 filterReason,

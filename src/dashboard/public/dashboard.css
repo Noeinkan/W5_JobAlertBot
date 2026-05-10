@@ -135,8 +135,16 @@ thead tr.filter-row input,
 thead tr.filter-row select{width:100%;background:#252836;color:#e2e8f0;border:1px solid #2d3148;border-radius:4px;padding:.25rem .4rem;font-size:.75rem}
 thead tr.filter-row input:focus,
 thead tr.filter-row select:focus{outline:1px solid #6366f1;border-color:#6366f1}
-tbody tr{border-bottom:1px solid #1e2235;transition:background .1s}
+tbody tr{border-bottom:1px solid #1e2235;transition:background .1s,opacity .12s}
 tbody tr:hover{background:#1e2235}
+/* Whole-row de-emphasis when job is discarded or expired */
+tbody tr.row-muted{opacity:.52;color:#64748b}
+tbody tr.row-muted:hover{opacity:.68;background:#181b22}
+tbody tr.row-muted td a{color:#787f92}
+tbody tr.row-muted td a:hover{color:#94a3b8}
+tbody tr.row-muted .job-preview-btn{color:#787f92;border-color:#2d3148}
+tbody tr.row-muted .job-preview-btn:hover{color:#94a3b8}
+tbody tr.row-muted:hover td.col-sticky{background:#181b22}
 tbody td{padding:.45rem .7rem;vertical-align:top;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 tbody td.wrap{white-space:normal;word-break:break-word}
 tbody td a{color:#60a5fa;text-decoration:none}
@@ -259,3 +267,44 @@ body.col-resizing{cursor:col-resize;user-select:none}
   .table-toolbar{gap:.5rem}
   .table-scroll-outer{max-height:55vh}
   .bottom-scroll-wrap{height:18px}
+}
+
+/* ── Job preview (stored description + highlights) ─────────────────────────── */
+.job-preview-btn{
+  margin-left:.35rem;padding:.12rem .45rem;font-size:.68rem;border-radius:4px;border:1px solid #3d4268;
+  background:#252836;color:#a5b4fc;cursor:pointer;font:inherit;line-height:1.2;vertical-align:middle;
+}
+.job-preview-btn:hover{border-color:#6366f1;color:#c7d2fe;background:#2f3552}
+.job-preview-modal{
+  display:none;position:fixed;inset:0;z-index:10000;align-items:center;justify-content:center;
+  padding:1rem;
+}
+.job-preview-backdrop{position:absolute;inset:0;background:rgba(0,0,0,.65)}
+.job-preview-dialog{
+  position:relative;z-index:1;max-width:min(920px,100%);max-height:min(88vh,900px);width:100%;
+  background:#14171f;border:1px solid #2d3148;border-radius:12px;box-shadow:0 16px 48px rgba(0,0,0,.55);
+  display:flex;flex-direction:column;padding:1rem 1.1rem .85rem;
+}
+.job-preview-close{
+  position:absolute;top:.45rem;right:.55rem;width:32px;height:32px;border:none;border-radius:8px;
+  background:#252836;color:#94a3b8;font-size:1.25rem;line-height:1;cursor:pointer;
+}
+.job-preview-close:hover{background:#2f3552;color:#e2e8f0}
+.job-preview-heading{font-size:1rem;font-weight:600;color:#e2e8f0;margin:0 2rem .35rem 0;line-height:1.35}
+.job-preview-legend{font-size:.72rem;color:#64748b;margin-bottom:.55rem;line-height:1.6}
+.job-preview-legend .hl-key mark{padding:.06rem .28rem;border-radius:4px;margin-right:.25rem;font-size:.68rem}
+.job-preview-body{
+  flex:1;overflow:auto;font-size:.82rem;line-height:1.55;color:#cbd5e1;
+  border:1px solid #222741;border-radius:8px;padding:.75rem .85rem;background:#0f1117;
+}
+.job-preview-prose mark{padding:.03rem .15rem;border-radius:3px}
+.job-preview-prose mark.hl-search{background:rgba(99,102,241,.35);color:#e0e7ff}
+.job-preview-prose mark.hl-rag-title{background:rgba(52,211,153,.28);color:#d1fae5}
+.job-preview-prose mark.hl-rag-domain{background:rgba(251,191,36,.28);color:#fef3c7}
+.job-preview-prose mark.hl-rag-exp{background:rgba(244,114,182,.22);color:#fce7f3}
+.job-preview-prose mark.hl-tech{background:rgba(56,189,248,.22);color:#e0f2fe}
+.job-preview-prose mark.hl-sector{background:rgba(167,139,250,.22);color:#ede9fe}
+.job-preview-footer{margin-top:.65rem;font-size:.82rem}
+.job-preview-footer a{color:#93c5fd}
+.job-preview-loading,.job-preview-empty,.job-preview-error{color:#94a3b8;font-size:.85rem}
+.job-preview-error{color:#f87171}
