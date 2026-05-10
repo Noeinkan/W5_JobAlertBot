@@ -360,3 +360,59 @@ body.col-resizing{cursor:col-resize;user-select:none}
 .job-preview-footer a{color:#93c5fd}
 .job-preview-loading,.job-preview-empty,.job-preview-error{color:#94a3b8;font-size:.85rem}
 .job-preview-error{color:#f87171}
+
+/* ── Fullscreen chart modal + per-card fullscreen button ──────────────────── */
+.card h2{justify-content:flex-start}
+.fs-btn{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;margin-left:auto;border-radius:4px;border:1px solid #3d4268;background:#252836;color:#a5b4fc;font-size:.78rem;cursor:pointer;line-height:1;padding:0;transition:background .15s,border-color .15s,color .15s}
+.fs-btn:hover{background:#2f3552;color:#c7d2fe;border-color:#6366f1}
+.fs-btn:focus{outline:2px solid #6366f1;outline-offset:1px}
+
+.chart-fs-modal{display:none;position:fixed;inset:0;z-index:10000;align-items:stretch;justify-content:stretch}
+.chart-fs-modal.open{display:flex}
+.chart-fs-backdrop{position:absolute;inset:0;background:rgba(7,10,16,.82)}
+.chart-fs-dialog{position:relative;z-index:1;flex:1;margin:1.1rem;background:#14171f;border:1px solid #2d3148;border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,.55);display:flex;flex-direction:column;overflow:hidden;min-width:0}
+.chart-fs-header{display:flex;align-items:center;gap:.85rem;padding:.7rem 1rem;border-bottom:1px solid #2d3148;background:#181b25}
+.chart-fs-header h3{font-size:.92rem;font-weight:600;color:#e2e8f0;margin:0}
+.chart-fs-help{flex:1;font-size:.74rem;color:#94a3b8;line-height:1.45;max-width:680px;border-left:1px solid #2d3148;padding-left:.85rem;margin-left:.25rem}
+.chart-fs-close{width:32px;height:32px;border:none;border-radius:8px;background:#252836;color:#94a3b8;font-size:1.3rem;cursor:pointer;line-height:1}
+.chart-fs-close:hover{background:#2f3552;color:#e2e8f0}
+
+.chart-fs-body{flex:1;min-height:0;display:grid;grid-template-columns:280px 1fr;gap:0}
+.chart-fs-filters{background:#0f1117;border-right:1px solid #2d3148;padding:.85rem .95rem;overflow-y:auto;display:flex;flex-direction:column;gap:1rem}
+.chart-fs-filters .fs-empty{color:#64748b;font-size:.78rem;font-style:italic}
+.chart-fs-canvas-wrap{position:relative;padding:1rem 1.25rem;min-width:0;display:flex;flex-direction:column}
+.chart-fs-canvas-host{position:relative;flex:1;min-height:0}
+.chart-fs-canvas-host canvas{width:100%!important;height:100%!important}
+
+.chart-fs-footer{display:flex;align-items:center;gap:.6rem;padding:.55rem 1rem;border-top:1px solid #2d3148;background:#181b25}
+.chart-fs-footer .grow{flex:1}
+.chart-fs-footer .btn{font-size:.76rem;padding:.3rem .6rem}
+.chart-fs-footer .summary{font-size:.72rem;color:#94a3b8}
+
+/* Per-filter widget UI inside the filter panel */
+.fs-filter-group{display:flex;flex-direction:column;gap:.4rem}
+.fs-filter-group .fs-label{font-size:.66rem;color:#94a3b8;text-transform:uppercase;letter-spacing:.06em;font-weight:600;display:flex;align-items:center;gap:.45rem}
+.fs-filter-group .fs-sub{font-size:.7rem;color:#64748b;line-height:1.35}
+.fs-chips{display:flex;flex-wrap:wrap;gap:.3rem;max-height:180px;overflow-y:auto}
+.fs-chip{font-size:.72rem;padding:.22rem .55rem;border-radius:999px;border:1px solid #3d4268;background:#1e2235;color:#94a3b8;cursor:pointer;user-select:none;line-height:1.2;transition:background .12s,border-color .12s,color .12s}
+.fs-chip.on{background:#1e1a3b;border-color:#6366f1;color:#c7d2fe}
+.fs-chip:hover{background:#2f3552}
+.fs-chip-actions{display:flex;gap:.35rem;margin-left:auto}
+.fs-chip-actions button{background:transparent;border:1px solid #3d4268;color:#94a3b8;font-size:.66rem;padding:.12rem .45rem;border-radius:5px;cursor:pointer}
+.fs-chip-actions button:hover{background:#252836;color:#c7d2fe;border-color:#6366f1}
+.fs-input-row{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap}
+.fs-input-row input[type="number"],.fs-input-row select{background:#252836;color:#e2e8f0;border:1px solid #3d4268;border-radius:6px;padding:.25rem .5rem;font-size:.78rem;min-width:70px}
+.fs-input-row input[type="number"]:focus,.fs-input-row select:focus{outline:2px solid #6366f1}
+.fs-range-row{display:flex;align-items:center;gap:.5rem}
+.fs-range-row input[type="range"]{flex:1;accent-color:#6366f1}
+.fs-range-row .fs-range-val{font-size:.72rem;color:#cbd5e1;min-width:48px;text-align:right;font-variant-numeric:tabular-nums}
+.fs-toggle-list{display:flex;flex-direction:column;gap:.3rem}
+.fs-toggle-list label{display:flex;align-items:center;gap:.45rem;font-size:.78rem;color:#cbd5e1;cursor:pointer}
+.fs-toggle-list input{accent-color:#6366f1;cursor:pointer}
+
+@media (max-width:880px){
+  .chart-fs-body{grid-template-columns:1fr}
+  .chart-fs-filters{max-height:240px;border-right:none;border-bottom:1px solid #2d3148}
+  .chart-fs-help{display:none}
+  .chart-fs-dialog{margin:.45rem}
+}

@@ -2,7 +2,7 @@
   "defaults": {
     "location": "London",
     "distance_from_location": 30,
-    "allowed_sources": ["adzuna", "reed", "serper", "linkedin", "jooble", "careerjet", "guardian", "jobserve", "construction_enquirer", "cvlibrary", "risetechnical"],
+    "allowed_sources": ["adzuna", "reed", "serper", "linkedin", "jooble", "careerjet", "guardian", "jobserve", "construction_enquirer", "cvlibrary", "risetechnical", "ciob", "bimplus", "technojobs", "totaljobs", "cwjobs", "hays", "michaelpage", "monster", "glassdoor"],
     "exclude_keywords": ["graduate", "junior", "trainee", "apprentice", "entry level"],
     "enrich_jobs": true
   },
@@ -24,7 +24,7 @@
     {
       "id": "information_management",
       "name": "Information Management",
-      "keywords": "Information Management",
+      "keywords": "Information Management OR BIM Information Manager OR Project Information Manager OR Principal BIM Information",
       "location": "London",
       "min_salary": 80000
     },
@@ -38,7 +38,7 @@
     {
       "id": "digital_engineering",
       "name": "Digital Engineering",
-      "keywords": "Digital Engineering",
+      "keywords": "Digital Engineering OR BIM Energy OR Digital Engineering Manager BIM",
       "location": "London",
       "min_salary": 80000
     },
@@ -83,7 +83,7 @@
     {
       "id": "senior_digital_leadership_uk",
       "name": "Senior Digital Leadership (UK-wide)",
-      "keywords": "Head of Digital Construction OR Head of Digital Engineering OR Head of Digital Delivery OR Head of Asset Information OR Digital Construction Director OR Digital Engineering Director OR Head of Digital",
+      "keywords": "Head of Digital Construction OR Head of Digital Engineering OR Head of Digital Delivery OR Head of Asset Information OR Digital Construction Director OR Digital Engineering Director OR Head of Digital OR Digital Advisory OR BIM Information Manager OR Principal BIM Information OR Director Digital Advisory",
       "location": "United Kingdom",
       "distance_from_location": 150,
       "min_salary": 80000
@@ -106,9 +106,16 @@
     {
       "id": "digital_innovation",
       "name": "Digital Innovation",
-      "keywords": "Digital Innovation",
+      "keywords": "Digital Innovation OR Digital Advisory",
       "location": "London",
       "min_salary": 85000
+    },
+    {
+      "id": "digital_advisory_bim_im",
+      "name": "Digital Advisory & BIM Information (London)",
+      "keywords": "Digital Advisory OR BIM Information Manager OR Principal BIM Information OR Digital Consulting BIM",
+      "location": "London",
+      "min_salary": 80000
     },
     {
       "id": "contract_bim",

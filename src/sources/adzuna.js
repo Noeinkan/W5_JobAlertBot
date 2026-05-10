@@ -4,8 +4,9 @@ import { withRetry } from '../utils/http.js';
 import { buildSalaryInfo } from '../utils/salary.js';
 import { isRelevantJob } from '../utils/relevance.js';
 import { logger } from '../utils/logger.js';
+import { maxRawListingsPerQuery } from '../utils/sourcePagination.js';
 
-const baseUrl = 'https://api.adzuna.com/v1/api/jobs/gb/search/1';
+const RESULTS_PER_PAGE = 50;
 
 function buildAdzunaParams(search) {
   const keywords = Array.isArray(search.keywords) ? search.keywords.filter(Boolean) : [];
@@ -16,7 +17,7 @@ function buildAdzunaParams(search) {
     where: search.location,
     salary_min: search.min_salary ?? undefined,
     category: search.category ?? search.source_options?.adzuna?.category ?? undefined,
-    results_per_page: 20,
+    results_per_page: RESULTS_PER_PAGE,
     sort_by: 'date',
   };
 
@@ -39,50 +40,62 @@ export const adzunaSource = {
     return Boolean(env.adzunaAppId && env.adzunaAppKey);
   },
   async fetchJobs(search) {
-    const response = await withRetry(
-      () => axios.get(baseUrl, {
-        timeout: appConfig.requestTimeoutMs,
-        params: buildAdzunaParams(search),
-      }),
-      {
-        source: 'adzuna',
-        searchId: search.id,
-      }
-    );
-
+    const maxRaw = maxRawListingsPerQuery();
     const jobs = [];
+    let fetched = 0;
 
-    for (const item of (response.data?.results ?? [])) {
-      const title = item.title ?? '';
-      const description = item.description ?? '';
+    for (let page = 1; fetched < maxRaw; page++) {
+      const url = `https://api.adzuna.com/v1/api/jobs/gb/search/${page}`;
+      const response = await withRetry(
+        () =>
+          axios.get(url, {
+            timeout: appConfig.requestTimeoutMs,
+            params: buildAdzunaParams(search),
+          }),
+        {
+          source: 'adzuna',
+          searchId: search.id,
+        }
+      );
 
-      if (!isRelevantJob(title, description)) {
-        logger.debug('Adzuna job filtered by relevance', { title, searchId: search.id });
-        continue;
+      const batch = response.data?.results ?? [];
+      if (batch.length === 0) break;
+
+      for (const item of batch) {
+        const title = item.title ?? '';
+        const description = item.description ?? '';
+
+        if (!isRelevantJob(title, description)) {
+          logger.debug('Adzuna job filtered by relevance', { title, searchId: search.id });
+          continue;
+        }
+
+        const salaryInfo = buildSalaryInfo({
+          title,
+          description,
+          salaryMin: item.salary_min,
+          salaryMax: item.salary_max,
+        });
+
+        jobs.push({
+          externalId: item.id ? String(item.id) : null,
+          source: 'adzuna',
+          title,
+          company: item.company?.display_name ?? 'Unknown company',
+          location: item.location?.display_name ?? search.location,
+          salaryMin: salaryInfo.salaryMin,
+          salaryMax: salaryInfo.salaryMax,
+          salaryText: salaryInfo.salaryText,
+          isContract: salaryInfo.isContract,
+          url: item.redirect_url,
+          postedAt: item.created ?? null,
+          searchId: search.id,
+          description,
+        });
       }
 
-      const salaryInfo = buildSalaryInfo({
-        title,
-        description,
-        salaryMin: item.salary_min,
-        salaryMax: item.salary_max,
-      });
-
-      jobs.push({
-        externalId: item.id ? String(item.id) : null,
-        source: 'adzuna',
-        title,
-        company: item.company?.display_name ?? 'Unknown company',
-        location: item.location?.display_name ?? search.location,
-        salaryMin: salaryInfo.salaryMin,
-        salaryMax: salaryInfo.salaryMax,
-        salaryText: salaryInfo.salaryText,
-        isContract: salaryInfo.isContract,
-        url: item.redirect_url,
-        postedAt: item.created ?? null,
-        searchId: search.id,
-        description,
-      });
+      fetched += batch.length;
+      if (batch.length < RESULTS_PER_PAGE) break;
     }
 
     return jobs;

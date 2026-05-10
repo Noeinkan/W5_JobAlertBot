@@ -4,6 +4,7 @@ import { withRetry } from '../utils/http.js';
 import { buildSalaryInfo } from '../utils/salary.js';
 import { isRelevantJob } from '../utils/relevance.js';
 import { logger } from '../utils/logger.js';
+import { maxRawListingsPerQuery } from '../utils/sourcePagination.js';
 
 const cache = new Map();
 const baseUrl = 'https://google.serper.dev/search';
@@ -29,32 +30,55 @@ export const serperSource = {
       }));
     }
 
-    const response = await withRetry(
-      () => axios.post(
-        baseUrl,
+    const maxRaw = maxRawListingsPerQuery();
+    const mergedByLink = new Map();
+    let apiRows = 0;
+
+    for (let page = 1; apiRows < maxRaw && page <= 40; page++) {
+      const response = await withRetry(
+        () =>
+          axios.post(
+            baseUrl,
+            {
+              q: `${search.query} jobs`,
+              location: search.source_options?.serper?.location ?? `${search.location}, UK`,
+              gl: search.source_options?.serper?.gl ?? 'uk',
+              hl: 'en',
+              page,
+            },
+            {
+              timeout: appConfig.requestTimeoutMs,
+              headers: {
+                'X-API-KEY': env.serperApiKey,
+                'Content-Type': 'application/json',
+              },
+            }
+          ),
         {
-          q: `${search.query} jobs`,
-          location: search.source_options?.serper?.location ?? `${search.location}, UK`,
-          gl: search.source_options?.serper?.gl ?? 'uk',
-          hl: 'en',
-        },
-        {
-          timeout: appConfig.requestTimeoutMs,
-          headers: {
-            'X-API-KEY': env.serperApiKey,
-            'Content-Type': 'application/json',
-          },
+          source: 'serper',
+          searchId: search.id,
         }
-      ),
-      {
-        source: 'serper',
-        searchId: search.id,
+      );
+
+      const batch = response.data?.jobs ?? [];
+      if (batch.length === 0) break;
+
+      const beforeSize = mergedByLink.size;
+      for (let i = 0; i < batch.length; i++) {
+        const item = batch[i];
+        const lk = item.link;
+        const key = lk || `serper-${page}-${i}-${item.title ?? ''}`;
+        if (!mergedByLink.has(key)) mergedByLink.set(key, item);
       }
-    );
+
+      apiRows += batch.length;
+      if (mergedByLink.size === beforeSize) break;
+      if (batch.length < 8) break;
+    }
 
     const jobs = [];
 
-    for (const item of (response.data?.jobs ?? [])) {
+    for (const item of mergedByLink.values()) {
       const title = item.title ?? '';
       const description = [item.description, ...(item.extensions ?? [])].filter(Boolean).join(' | ');
 

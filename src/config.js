@@ -172,7 +172,18 @@ export const env = {
   profileFitPath: process.env.PROFILE_FIT_PATH
     ? path.resolve(process.cwd(), process.env.PROFILE_FIT_PATH)
     : path.join(dataDir, 'profile.json'),
+  monsterClientId: process.env.MONSTER_CLIENT_ID ?? '',
+  monsterClientSecret: process.env.MONSTER_CLIENT_SECRET ?? '',
+  glassdoorPartnerId: process.env.GLASSDOOR_PARTNER_ID ?? '',
+  glassdoorPartnerKey: process.env.GLASSDOOR_PARTNER_KEY ?? '',
 };
+
+function resolveSourceMaxResultsPerQuery() {
+  const raw = process.env.SOURCE_MAX_RESULTS_PER_QUERY;
+  const n = raw === undefined || raw === '' ? 300 : Number.parseInt(String(raw), 10);
+  if (!Number.isFinite(n) || n < 1) return 300;
+  return Math.min(n, 1000);
+}
 
 export const appConfig = {
   timezone: 'Europe/London',
@@ -184,6 +195,8 @@ export const appConfig = {
   logFilePath: path.resolve(process.cwd(), 'logs', 'job-alert-bot.log'),
   searchesPath,
   requestTimeoutMs: 15000,
+  /** Cap on raw listings fetched per source × saved search (pagination depth). Env: SOURCE_MAX_RESULTS_PER_QUERY */
+  sourceMaxResultsPerQuery: resolveSourceMaxResultsPerQuery(),
 };
 
 export function ensureBaseConfig() {
@@ -219,6 +232,15 @@ export function getConfiguredSources() {
     construction_enquirer: true,
     cvlibrary: true,
     risetechnical: true,
+    ciob: true,
+    bimplus: true,
+    technojobs: true,
+    totaljobs: true,
+    cwjobs: true,
+    hays: true,
+    michaelpage: true,
+    monster: Boolean(env.monsterClientId && env.monsterClientSecret),
+    glassdoor: Boolean(env.glassdoorPartnerId && env.glassdoorPartnerKey),
   };
 }
 
@@ -264,5 +286,14 @@ export function getSourceLabel(source) {
     construction_enquirer: 'Construction Enquirer',
     cvlibrary: 'CV-Library',
     risetechnical: 'Rise Technical',
+    ciob: 'CIOB Jobs',
+    bimplus: 'BIM+ Jobs',
+    technojobs: 'Technojobs',
+    totaljobs: 'Totaljobs',
+    cwjobs: 'CWJobs',
+    hays: 'Hays',
+    michaelpage: 'Michael Page',
+    monster: 'Monster',
+    glassdoor: 'Glassdoor',
   }[source] ?? source;
 }

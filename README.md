@@ -100,7 +100,9 @@ cp .env.example .env
 - `SERPER_API_KEY` — required for Serper
 - `JOOBLE_API_KEY` — optional; email api@jooble.org for a free key. Aggregates Totaljobs, CV-Library, CWJobs, and 100+ UK boards
 - `GUARDIAN_API_KEY` — optional; free key from open-platform.theguardian.com. Good for public sector digital/BIM roles
-- LinkedIn, Careerjet, JobServe, Construction Enquirer, and CV-Library require no API key and are always enabled
+- LinkedIn, Careerjet, JobServe, Construction Enquirer, CV-Library, Rise Technical, CIOB Jobs, BIM+ Jobs, Technojobs, Totaljobs, CWJobs, Hays, and Michael Page require no API key and are always enabled (scraped sources may fail behind bot protection)
+- `MONSTER_CLIENT_ID` + `MONSTER_CLIENT_SECRET` — optional [Monster partner API](https://partner.monster.com/) (OAuth client credentials)
+- `GLASSDOOR_PARTNER_ID` + `GLASSDOOR_PARTNER_KEY` — optional [Glassdoor partner API](https://www.glassdoor.com/developer/index.htm)
 
 ### Runtime Tuning
 
@@ -243,7 +245,7 @@ Supported fields:
 - `min_salary`: minimum salary filter
 - `contract_only`: keep only roles detected as contract roles
 - `tags`: hashtags added to embeds
-- `allowed_sources`: subset of `adzuna`, `reed`, `serper`, `linkedin`, `jooble`, `careerjet`, `guardian`, `jobserve`, `construction_enquirer`, `cvlibrary`
+- `allowed_sources`: subset of `adzuna`, `reed`, `serper`, `linkedin`, `jooble`, `careerjet`, `guardian`, `jobserve`, `construction_enquirer`, `cvlibrary`, `risetechnical`, `ciob`, `bimplus`, `technojobs`, `totaljobs`, `cwjobs`, `hays`, `michaelpage`, `monster`, `glassdoor`
 - `exclude_keywords`: post-fetch content filter
 - `distance_from_location`: used by Reed
 - `source_options`: source-specific overrides
@@ -255,7 +257,7 @@ Example:
 	"defaults": {
 		"location": "London",
 		"distance_from_location": 10,
-		"allowed_sources": ["adzuna", "reed", "serper", "linkedin", "jooble", "careerjet", "guardian", "jobserve", "construction_enquirer", "cvlibrary"],
+		"allowed_sources": ["adzuna", "reed", "serper", "linkedin", "jooble", "careerjet", "guardian", "jobserve", "construction_enquirer", "cvlibrary", "risetechnical", "ciob", "bimplus", "technojobs", "totaljobs", "cwjobs", "hays", "michaelpage", "monster", "glassdoor"],
 		"exclude_keywords": [],
 		"tags": []
 	},
@@ -266,7 +268,7 @@ Example:
 			"enabled": true,
 			"keywords": ["BIM Manager contract", "Information Manager contract infrastructure"],
 			"contract_only": true,
-			"allowed_sources": ["adzuna", "reed", "serper", "linkedin", "jooble", "careerjet", "guardian", "jobserve", "construction_enquirer", "cvlibrary"],
+			"allowed_sources": ["adzuna", "reed", "serper", "linkedin", "jooble", "careerjet", "guardian", "jobserve", "construction_enquirer", "cvlibrary", "risetechnical", "ciob", "bimplus", "technojobs", "totaljobs", "cwjobs", "hays", "michaelpage", "monster", "glassdoor"],
 			"exclude_keywords": ["graduate", "junior", "trainee"],
 			"source_options": {
 				"adzuna": {

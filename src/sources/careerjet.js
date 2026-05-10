@@ -4,6 +4,9 @@ import { withRetry } from '../utils/http.js';
 import { buildSalaryInfo } from '../utils/salary.js';
 import { isRelevantJob } from '../utils/relevance.js';
 import { logger } from '../utils/logger.js';
+import { maxRawListingsPerQuery } from '../utils/sourcePagination.js';
+
+const PAGE_SIZE = 50;
 
 // public.api.careerjet.co.uk has been decommissioned (DNS no longer resolves).
 // Set CAREERJET_ENABLED=true in .env to re-enable if a working endpoint is found.
@@ -15,57 +18,69 @@ export const careerjetSource = {
     return String(process.env.CAREERJET_ENABLED ?? 'false').toLowerCase() === 'true';
   },
   async fetchJobs(search) {
-    const response = await withRetry(
-      () => axios.get(baseUrl, {
-        timeout: appConfig.requestTimeoutMs,
-        params: {
-          keywords: search.query,
-          location: search.location,
-          affid: 'jobbot',
-          page: 1,
-          pagesize: 25,
-        },
-      }),
-      { source: 'careerjet', searchId: search.id }
-    );
-
+    const maxRaw = maxRawListingsPerQuery();
     const jobs = [];
+    let rawSeen = 0;
 
-    for (const item of (response.data?.jobs ?? [])) {
-      const title = item.title ?? '';
-      const description = item.description ?? '';
+    for (let page = 1; rawSeen < maxRaw && page <= 50; page++) {
+      const response = await withRetry(
+        () =>
+          axios.get(baseUrl, {
+            timeout: appConfig.requestTimeoutMs,
+            params: {
+              keywords: search.query,
+              location: search.location,
+              affid: 'jobbot',
+              page,
+              pagesize: PAGE_SIZE,
+            },
+          }),
+        { source: 'careerjet', searchId: search.id }
+      );
 
-      if (!isRelevantJob(title, description)) {
-        logger.debug('Careerjet job filtered by relevance', { title, searchId: search.id });
-        continue;
-      }
+      const batch = response.data?.jobs ?? [];
+      if (batch.length === 0) break;
 
-      const salaryInfo = buildSalaryInfo({ title, description });
+      rawSeen += batch.length;
 
-      let postedAt = null;
-      if (item.date) {
-        try {
-          postedAt = new Date(item.date).toISOString();
-        } catch {
-          // ignore unparseable dates
+      for (const item of batch) {
+        const title = item.title ?? '';
+        const description = item.description ?? '';
+
+        if (!isRelevantJob(title, description)) {
+          logger.debug('Careerjet job filtered by relevance', { title, searchId: search.id });
+          continue;
         }
+
+        const salaryInfo = buildSalaryInfo({ title, description });
+
+        let postedAt = null;
+        if (item.date) {
+          try {
+            postedAt = new Date(item.date).toISOString();
+          } catch {
+            // ignore unparseable dates
+          }
+        }
+
+        jobs.push({
+          externalId: item.url ?? `${title}-${item.company}`,
+          source: 'careerjet',
+          title,
+          company: item.company ?? 'Unknown company',
+          location: item.locations ?? search.location,
+          salaryMin: salaryInfo.salaryMin,
+          salaryMax: salaryInfo.salaryMax,
+          salaryText: salaryInfo.salaryText,
+          isContract: salaryInfo.isContract,
+          url: item.url,
+          postedAt,
+          searchId: search.id,
+          description,
+        });
       }
 
-      jobs.push({
-        externalId: item.url ?? `${title}-${item.company}`,
-        source: 'careerjet',
-        title,
-        company: item.company ?? 'Unknown company',
-        location: item.locations ?? search.location,
-        salaryMin: salaryInfo.salaryMin,
-        salaryMax: salaryInfo.salaryMax,
-        salaryText: salaryInfo.salaryText,
-        isContract: salaryInfo.isContract,
-        url: item.url,
-        postedAt,
-        searchId: search.id,
-        description,
-      });
+      if (batch.length < PAGE_SIZE) break;
     }
 
     logger.debug('Careerjet jobs fetched', { searchId: search.id, count: jobs.length });

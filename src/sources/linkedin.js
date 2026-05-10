@@ -4,6 +4,7 @@ import { withRetry } from '../utils/http.js';
 import { buildSalaryInfo } from '../utils/salary.js';
 import { logger } from '../utils/logger.js';
 import { isRelevantJob } from '../utils/relevance.js';
+import { maxRawListingsPerQuery } from '../utils/sourcePagination.js';
 
 const baseUrl = 'https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search';
 
@@ -29,7 +30,7 @@ function extractCards(html) {
   return html.split('<li').slice(1).filter((chunk) => chunk.includes('base-card'));
 }
 
-const PAGES = [0, 25];
+const PAGE_SIZE = 25;
 
 export const linkedinSource = {
   name: 'linkedin',
@@ -44,13 +45,14 @@ export const linkedinSource = {
         ? `${search.location}, United Kingdom`
         : 'United Kingdom';
 
+    const maxCards = maxRawListingsPerQuery();
     const allCards = [];
-    for (const start of PAGES) {
+    for (let start = 0; start < maxCards; start += PAGE_SIZE) {
       const params = new URLSearchParams({
         keywords: search.query,
         location,
         start: String(start),
-        count: '25',
+        count: String(PAGE_SIZE),
       });
 
       const response = await withRetry(
@@ -69,12 +71,13 @@ export const linkedinSource = {
       const page = extractCards(response.data);
       if (page.length === 0) break;
       allCards.push(...page);
+      if (allCards.length >= maxCards) break;
     }
 
     const seenUrls = new Set();
     const jobs = [];
 
-    for (const card of allCards) {
+    for (const card of allCards.slice(0, maxCards)) {
       const title = extractText(card, 'base-search-card__title');
       if (!title) continue;
 

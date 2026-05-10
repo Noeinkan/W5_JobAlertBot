@@ -7,11 +7,11 @@ alwaysApply: true
 
 ## What this repo is
 
-A Node.js **ESM** Discord bot that aggregates UK jobs from **11** sources, scores and filters them (relevance, **RAG**, seniority, salary), enriches descriptions and extracts structured fields, stores everything in **SQLite**, posts alerts to Discord, and optionally serves a separate **dashboard** (analytics, charts, run logs, applied/discarded actions).
+A Node.js **ESM** Discord bot that aggregates UK jobs from **20** sources, scores and filters them (relevance, **RAG**, seniority, salary), enriches descriptions and extracts structured fields, stores everything in **SQLite**, posts alerts to Discord, and optionally serves a separate **dashboard** (analytics, charts, run logs, applied/discarded actions).
 
 ## Sources
 
-Adzuna, Reed, Serper, LinkedIn, Jooble, Careerjet, Guardian Jobs, JobServe, Construction Enquirer, CV-Library, Rise Technical (`src/sources/risetechnical.js`). Prefer fixing shared logic under `src/utils/` rather than duplicating per adapter.
+Adzuna, Reed, Serper, LinkedIn, Jooble, Careerjet, Guardian Jobs, JobServe, Construction Enquirer, CV-Library, Rise Technical, CIOB Jobs, BIM+ Jobs, Technojobs, Totaljobs, CWJobs, Hays, Michael Page, Monster, Glassdoor (`src/sources/*.js`, plus `stepstone_platform.js`, `next_data_extract.js`). Prefer fixing shared logic under `src/utils/` rather than duplicating per adapter.
 
 ## Important paths
 

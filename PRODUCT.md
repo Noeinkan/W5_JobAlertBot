@@ -16,7 +16,7 @@ Individuals actively or passively searching for senior roles (e.g. BIM Manager, 
 
 ### Multi-Source Aggregation
 
-Fetches from 11 job sources in a single run:
+Fetches from 20 job sources in a single run:
 
 | Source | Key Required |
 |---|---|
@@ -30,6 +30,16 @@ Fetches from 11 job sources in a single run:
 | JobServe | No |
 | Construction Enquirer | No |
 | CV-Library | No |
+| Rise Technical | No |
+| CIOB Jobs | No |
+| BIM+ Jobs | No |
+| Technojobs | No |
+| Totaljobs | No |
+| CWJobs | No |
+| Hays | No |
+| Michael Page | No |
+| Monster | Yes (partner OAuth) |
+| Glassdoor | Yes (partner API) |
 
 ### Deduplication
 

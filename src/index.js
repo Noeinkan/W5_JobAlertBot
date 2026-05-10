@@ -25,16 +25,25 @@ import {
   sendStartupMessageWebhook,
 } from './discord.js';
 import { adzunaSource } from './sources/adzuna.js';
+import { bimplusSource } from './sources/bimplus.js';
 import { careerjetSource } from './sources/careerjet.js';
+import { ciobSource } from './sources/ciob.js';
 import { constructionEnquirerSource } from './sources/construction_enquirer.js';
+import { cwjobsSource } from './sources/cwjobs.js';
 import { cvlibrarySource } from './sources/cvlibrary.js';
+import { glassdoorSource } from './sources/glassdoor.js';
 import { guardianSource } from './sources/guardian.js';
+import { haysSource } from './sources/hays.js';
 import { joobleSource } from './sources/jooble.js';
 import { jobserveSource } from './sources/jobserve.js';
 import { linkedinSource } from './sources/linkedin.js';
+import { michaelpageSource } from './sources/michaelpage.js';
+import { monsterSource } from './sources/monster.js';
 import { reedSource } from './sources/reed.js';
 import { risetechnicalSource } from './sources/risetechnical.js';
 import { serperSource } from './sources/serper.js';
+import { technojobsSource } from './sources/technojobs.js';
+import { totaljobsSource } from './sources/totaljobs.js';
 import { logger } from './utils/logger.js';
 import { jobMatchesSearch, sourceAllowed } from './utils/search.js';
 import { passesMinimumSalary } from './utils/salary.js';
@@ -48,16 +57,25 @@ import { loadProfileFitConfig, scoreProfileFit } from './utils/profileFit.js';
 const client = hasDiscordBotConfig() ? createDiscordClient() : null;
 const sourceClients = [
   adzunaSource,
-  reedSource,
-  serperSource,
-  linkedinSource,
-  joobleSource,
+  bimplusSource,
   careerjetSource,
-  guardianSource,
-  jobserveSource,
+  ciobSource,
   constructionEnquirerSource,
+  cwjobsSource,
   cvlibrarySource,
+  glassdoorSource,
+  guardianSource,
+  haysSource,
+  joobleSource,
+  jobserveSource,
+  linkedinSource,
+  michaelpageSource,
+  monsterSource,
+  reedSource,
   risetechnicalSource,
+  serperSource,
+  technojobsSource,
+  totaljobsSource,
 ];
 
 let isRunInProgress = false;
