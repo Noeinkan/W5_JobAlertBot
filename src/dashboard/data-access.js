@@ -58,7 +58,7 @@ export function getAllJobsForDashboard() {
         notified, filter_reason, rag_rating, rag_score, rag_reason,
         remote_type, contract_length_months, sectors, clearances, tech_tools,
         years_experience, has_bonus, bonus_percent, car_allowance,
-        pension_percent, has_equity, applied, discarded
+        pension_percent, has_equity, applied, discarded, expired
       FROM jobs
       ORDER BY found_at DESC, id DESC
     `);
@@ -86,7 +86,8 @@ export function getJobActionOverlayMap() {
   const db = ensureReadonlyDb();
   const rows = db.prepare(`
     SELECT title, COALESCE(company, '') AS company, source,
-           COALESCE(applied, 0) AS applied, COALESCE(discarded, 0) AS discarded
+           COALESCE(applied, 0) AS applied, COALESCE(discarded, 0) AS discarded,
+           COALESCE(expired, 0) AS expired
     FROM jobs
   `).all();
   const map = new Map();
@@ -94,6 +95,7 @@ export function getJobActionOverlayMap() {
     map.set(makeJobKey(row.title, row.company, row.source), {
       applied: !!row.applied,
       discarded: !!row.discarded,
+      expired: !!row.expired,
     });
   }
   return map;
@@ -105,7 +107,9 @@ export function rowFromDbJob(job) {
     : (job.notified ? 'new' : 'already_seen');
   const outcome = job.discarded
     ? 'discarded'
-    : (job.applied ? 'applied' : baseOutcome);
+    : job.expired
+      ? 'expired'
+      : (job.applied ? 'applied' : baseOutcome);
   return {
     _baseOutcome: baseOutcome,
     run_at: job.found_at ?? '',
@@ -142,5 +146,6 @@ export function rowFromDbJob(job) {
     has_equity: job.has_equity ? 'yes' : '',
     applied:   job.applied   ? '1' : '0',
     discarded: job.discarded ? '1' : '0',
+    expired:   job.expired   ? '1' : '0',
   };
 }

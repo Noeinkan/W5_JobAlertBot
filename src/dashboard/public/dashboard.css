@@ -118,6 +118,9 @@ main{padding:.6rem 1rem 1.5rem;display:flex;flex-direction:column;gap:.65rem}
 .action-btn.act-discard{background:#1e2235;color:#94a3b8;border-color:#2d3148}
 .action-btn.act-discard:hover{background:#2a1a1a;color:#f87171;border-color:#7f1d1d}
 .action-btn.act-discard.active{background:#2a1a1a;color:#f87171;border-color:#7f1d1d}
+.action-btn.act-expire{background:#1e2235;color:#94a3b8;border-color:#2d3148}
+.action-btn.act-expire:hover{background:#2a1620;color:#fb7185;border-color:#9f1239}
+.action-btn.act-expire.active{background:#2a1620;color:#fb7185;border-color:#9f1239}
 .table-wrap{flex:1;min-height:0;overflow-y:auto;overflow-x:auto;border:none;border-radius:0;border-bottom:none}
 table{width:100%;border-collapse:collapse;font-size:.8rem;min-width:900px}
 thead tr.header-row th{background:#1e2235;color:#94a3b8;font-weight:600;text-transform:uppercase;font-size:.72rem;letter-spacing:.05em;padding:.55rem .7rem;white-space:nowrap;border-bottom:1px solid #2d3148;position:sticky;top:0;z-index:12;user-select:none}
@@ -147,6 +150,7 @@ tbody td a:hover{text-decoration:underline}
 .badge.filtered_rag     {background:#2e0f3b;color:#e879f9}
 .badge.applied          {background:#1e1a3b;color:#818cf8}
 .badge.discarded        {background:#1e2235;color:#475569}
+.badge.expired          {background:#2a1620;color:#fb7185}
 .badge.rate-day {background:#0c2a3b;color:#38bdf8}
 .badge.rate-hour{background:#1a1040;color:#a78bfa}
 .badge.Green{background:#14532d;color:#4ade80}

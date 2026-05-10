@@ -24,6 +24,7 @@ const OUTCOME_COLORS = {
   already_seen:       '#60a5fa',
   applied:            '#818cf8',
   discarded:          '#475569',
+  expired:            '#fb7185',
   filtered_seniority: '#f87171',
   filtered_salary:    '#fbbf24',
   filtered_match:     '#fb923c',
@@ -82,7 +83,7 @@ const COL_DEFS = [
   { key: 'car_allowance',   label: 'Car',       type: 'text', defaultWidth: 80 },
   { key: 'pension_percent', label: 'Pension %', type: 'text', defaultWidth: 80 },
   { key: 'has_equity',    label: 'Equity',      type: 'select', defaultWidth: 72 },
-  { key: '_actions',      label: 'Actions',     type: 'actions', defaultWidth: 175 },
+  { key: '_actions',      label: 'Actions',     type: 'actions', defaultWidth: 260 },
 ];
 const COL_DEFS_MAP = Object.fromEntries(COL_DEFS.map(c => [c.key, c]));
 const DEFAULT_COLUMN_ORDER = COL_DEFS.map(c => c.key);
@@ -354,6 +355,7 @@ function updateKpisFromVisible() {
   const perm      = rows.filter(r => r.jobType === 'Perm').length;
   const applied   = rows.filter(r => r.outcome === 'applied').length;
   const discarded = rows.filter(r => r.outcome === 'discarded').length;
+  const expired   = rows.filter(r => r.outcome === 'expired').length;
   if ($('kpiTotal'))     $('kpiTotal').textContent    = total;
   if ($('kpiNotified'))  $('kpiNotified').textContent = notified;
   if ($('kpiSeen'))      $('kpiSeen').textContent     = seen;
@@ -362,6 +364,7 @@ function updateKpisFromVisible() {
   if ($('kpiPerm'))      $('kpiPerm').textContent     = perm;
   if ($('kpiApplied'))   $('kpiApplied').textContent  = applied;
   if ($('kpiDiscarded')) $('kpiDiscarded').textContent = discarded;
+  if ($('kpiExpired'))   $('kpiExpired').textContent  = expired;
 }
 
 // ── Collapsible section persistence ──────────────────────────────────────────
@@ -498,13 +501,16 @@ function renderTable() {
     if (c.key === '_actions') {
       const appliedActive = r.applied === '1';
       const discardedActive = r.discarded === '1';
+      const expiredActive = r.expired === '1';
       const t  = escHtml(r.title   || '');
       const co = escHtml(r.company || '');
       const s  = escHtml(r.source  || '');
       cell = '<button class="action-btn act-apply' + (appliedActive ? ' active' : '') + '" data-act="applied" data-title="' + t + '" data-company="' + co + '" data-source="' + s + '" title="' + (appliedActive ? 'Undo applied' : 'Mark as applied') + '">'
            + (appliedActive ? '✓ Applied' : 'Apply') + '</button>'
            + '<button class="action-btn act-discard' + (discardedActive ? ' active' : '') + '" data-act="discarded" data-title="' + t + '" data-company="' + co + '" data-source="' + s + '" title="' + (discardedActive ? 'Undo discard' : 'Mark as not relevant') + '">'
-           + (discardedActive ? '✗ Discarded' : 'Not relevant') + '</button>';
+           + (discardedActive ? '✗ Discarded' : 'Not relevant') + '</button>'
+           + '<button class="action-btn act-expire' + (expiredActive ? ' active' : '') + '" data-act="expired" data-title="' + t + '" data-company="' + co + '" data-source="' + s + '" title="' + (expiredActive ? 'Undo expired' : 'Mark as expired') + '">'
+           + (expiredActive ? '⌛ Expired' : 'Expired') + '</button>';
     } else if (c.isLink && v) {
       cell = '<a href="' + escHtml(v) + '" target="_blank" rel="noreferrer">open ↗</a>';
     } else if (c.isRate && v) {
@@ -927,7 +933,7 @@ function initTableEvents() {
   document.getElementById('tBody').addEventListener('click', async e => {
     const btn = e.target.closest('[data-act]');
     if (!btn) return;
-    const act     = btn.dataset.act;      // 'applied' | 'discarded'
+    const act     = btn.dataset.act;      // 'applied' | 'discarded' | 'expired'
     const title   = btn.dataset.title;
     const company = btn.dataset.company;
     const source  = btn.dataset.source;
@@ -937,30 +943,41 @@ function initTableEvents() {
 
     const wasApplied   = row.applied   === '1';
     const wasDiscarded = row.discarded === '1';
+    const wasExpired   = row.expired   === '1';
     let newApplied   = wasApplied;
     let newDiscarded = wasDiscarded;
+    let newExpired   = wasExpired;
 
     if (act === 'applied') {
       newApplied   = !wasApplied;
-      if (newApplied) newDiscarded = false;
-    } else {
+      if (newApplied) { newDiscarded = false; newExpired = false; }
+    } else if (act === 'discarded') {
       newDiscarded = !wasDiscarded;
-      if (newDiscarded) newApplied = false;
+      if (newDiscarded) { newApplied = false; newExpired = false; }
+    } else {
+      newExpired = !wasExpired;
+      if (newExpired) { newApplied = false; newDiscarded = false; }
     }
 
     try {
       const res = await fetchWithDashboardToken(API_BASE + '/api/job-action', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title, company, source, applied: newApplied ? 1 : 0, discarded: newDiscarded ? 1 : 0 }),
+        body: JSON.stringify({ title, company, source, applied: newApplied ? 1 : 0, discarded: newDiscarded ? 1 : 0, expired: newExpired ? 1 : 0 }),
       });
       if (res.status === 401) return;
       if (!res.ok) { console.error('Action failed:', await res.text()); return; }
 
-      // Update row data in place
       row.applied   = newApplied   ? '1' : '0';
       row.discarded = newDiscarded ? '1' : '0';
-      row.outcome   = newDiscarded ? 'discarded' : newApplied ? 'applied' : (row._baseOutcome || 'already_seen');
+      row.expired   = newExpired   ? '1' : '0';
+      row.outcome   = newDiscarded
+        ? 'discarded'
+        : newExpired
+          ? 'expired'
+          : newApplied
+            ? 'applied'
+            : (row._baseOutcome || 'already_seen');
 
       renderTable();
       updateKpisFromVisible();
@@ -991,6 +1008,7 @@ function render(data) {
       <div class="kpi"        data-kpi-jobtype="Perm"          style="--k:#94a3b8" title="Click to filter table by Permanent roles">       <div class="val" id="kpiPerm"     style="color:#94a3b8">${data.permCount}</div>     <div class="lbl">Permanent</div></div>
       <div class="kpi"        data-kpi-outcome="applied"        style="--k:#818cf8" title="Click to filter table by Applied jobs">          <div class="val" id="kpiApplied"   style="color:#818cf8">${data.appliedCount}</div>   <div class="lbl">Applied</div></div>
       <div class="kpi"        data-kpi-outcome="discarded"      style="--k:#475569" title="Click to filter table by Discarded jobs">       <div class="val" id="kpiDiscarded" style="color:#475569">${data.discardedCount}</div> <div class="lbl">Discarded</div></div>
+      <div class="kpi"        data-kpi-outcome="expired"        style="--k:#fb7185" title="Click to filter table by Expired jobs">         <div class="val" id="kpiExpired"   style="color:#fb7185">${data.expiredCount}</div>   <div class="lbl">Expired</div></div>
     </div>
 
     <div id="filterBar" class="filter-bar empty"></div>

@@ -25,6 +25,7 @@ export const JOB_COLUMN_ADDITIONS = [
   ['has_equity', 'INTEGER'],
   ['applied', 'INTEGER'],
   ['discarded', 'INTEGER'],
+  ['expired', 'INTEGER'],
 ];
 
 export function ensureJobsSchema(db) {

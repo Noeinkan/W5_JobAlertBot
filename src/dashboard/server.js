@@ -174,11 +174,11 @@ export function createDashboardServer({ port, host, token, basePath }) {
       req.on('data', chunk => { body += chunk; });
       req.on('end', () => {
         try {
-          const { title, company, source, applied, discarded } = JSON.parse(body);
+          const { title, company, source, applied, discarded, expired } = JSON.parse(body);
           if (!title || !source) { res.writeHead(400); res.end('Missing fields'); return; }
           const db = getWriteDb();
-          db.prepare('UPDATE jobs SET applied = ?, discarded = ? WHERE title = ? AND (company = ? OR (company IS NULL AND ? IS NULL)) AND source = ?')
-            .run(applied ? 1 : 0, discarded ? 1 : 0, title, company || '', company || '', source);
+          db.prepare('UPDATE jobs SET applied = ?, discarded = ?, expired = ? WHERE title = ? AND (company = ? OR (company IS NULL AND ? IS NULL)) AND source = ?')
+            .run(applied ? 1 : 0, discarded ? 1 : 0, expired ? 1 : 0, title, company || '', company || '', source);
           invalidateAllAggregateCaches();
           res.writeHead(200, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ ok: true }));

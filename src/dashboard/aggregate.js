@@ -60,11 +60,14 @@ function applyJobActionOverlay(rows, overlayMap) {
     if (!o) {
       r.applied = '0';
       r.discarded = '0';
+      r.expired = '0';
       continue;
     }
     r.applied = o.applied ? '1' : '0';
     r.discarded = o.discarded ? '1' : '0';
+    r.expired = o.expired ? '1' : '0';
     if (o.discarded) r.outcome = 'discarded';
+    else if (o.expired) r.outcome = 'expired';
     else if (o.applied) r.outcome = 'applied';
     else r.outcome = csvOutcome;
   }
@@ -201,6 +204,7 @@ export function aggregate(rows) {
     filtered:      rows.filter(r => r.outcome?.startsWith('filtered')).length,
     appliedCount:  rows.filter(r => r.outcome === 'applied').length,
     discardedCount:rows.filter(r => r.outcome === 'discarded').length,
+    expiredCount:  rows.filter(r => r.outcome === 'expired').length,
     salaryCount: salaryVals.length,
     contractCount: byContract.Contract,
     permCount:     byContract.Perm,

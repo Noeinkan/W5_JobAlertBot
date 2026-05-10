@@ -1,72 +1,105 @@
 # CLAUDE.md
 
-Node.js Discord bot for UK job alerts. Fetches from Adzuna, Reed, Serper, LinkedIn, Jooble, Careerjet, Guardian Jobs, JobServe, Construction Enquirer, and CV-Library → normalizes → deduplicates in SQLite → notifies Discord.
+Node.js Discord bot for UK job alerts. Fetches from **11** sources (Adzuna, Reed, Serper, LinkedIn, Jooble, Careerjet, Guardian Jobs, JobServe, Construction Enquirer, CV-Library, **Rise Technical**) → normalizes → keyword relevance + **RAG** scoring + seniority/salary gates → description **enrichment** and structured **extraction** → deduplicates in SQLite → notifies Discord. Optional **web dashboard** (aggregates, charts, run logs, job actions) runs as a separate process.
 
 ## Stack
 
-Node.js 20+, ESM, discord.js v14, better-sqlite3, axios, node-cron, dotenv, fast-xml-parser
+Node.js 20+, ESM, discord.js v14, better-sqlite3, axios, node-cron, dotenv, fast-xml-parser, **chart.js** (dashboard bundles).
 
 ## Key Files
 
 | File | Purpose |
 |---|---|
-| `src/index.js` | bootstrap, scheduling, slash commands |
-| `src/config.js` | env loading, search normalization, source enablement |
-| `src/db.js` | schema, insert/stats helpers, pending job retrieval |
-| `src/discord.js` | client, embeds, webhook, command registration |
-| `src/sources/*.js` | source adapters (10 sources) |
-| `src/utils/http.js` | retry helper |
-| `src/utils/logger.js` | file and console logging |
-| `src/utils/salary.js` | salary parsing and contract detection |
-| `src/utils/search.js` | search and source filtering |
-| `src/utils/seniority.js` | seniority level detection |
-| `src/utils/relevance.js` | keyword relevance scoring |
-| `data/searches.json` | search definitions, reloaded on every run |
+| `src/index.js` | Bootstrap, scheduling, fetch pipeline, slash commands |
+| `src/config.js` | Env loading, search normalization, source enablement |
+| `src/db.js` | Writer connection, inserts, pending jobs, dashboard listing helpers |
+| `src/jobs-schema.js` | `jobs` / `run_log` DDL and **incremental column migrations** (shared with dashboard) |
+| `src/discord.js` | Client, embeds, webhook, command registration |
+| `src/sources/*.js` | **11** source adapters (`risetechnical.js` = Rise Technical) |
+| `src/utils/http.js` | Retry helper |
+| `src/utils/logger.js` | File and console logging |
+| `src/utils/salary.js` | Salary parsing and contract detection |
+| `src/utils/search.js` | Search and source filtering |
+| `src/utils/seniority.js` | Seniority level detection |
+| `src/utils/relevance.js` | Keyword relevance pre-filter (used inside adapters) |
+| `src/utils/rag.js` | RAG rating/score/reason for job fit |
+| `src/utils/enrich.js` | Description enrichment |
+| `src/utils/extractors.js` | Structured signals (remote type, sectors, clearances, benefits, etc.) |
+| `src/utils/run_log_csv.js` | Per-run CSV logs for the dashboard |
+| `src/dashboard.js` | Dashboard entrypoint (host, token, base path) |
+| `src/dashboard/server.js` | HTTP API, static UI, bot-control endpoints |
+| `src/dashboard/data-access.js` | Read-only DB access + job row shaping for UI |
+| `src/dashboard/aggregate.js` | Cached aggregates + merge **applied** / **discarded** from SQLite |
+| `scripts/backfill-extractors.js` | Backfill extraction columns on existing rows |
+| `data/searches.json` | Search definitions, reloaded on every run |
+| `deploy.sh` | Deploy/sync helper (production workflow) |
 
 ## Runtime Modes
 
-**Bot mode** (`DISCORD_TOKEN` + `DISCORD_CHANNEL_ID`): long-running, schedules runs at 01:00/07:00/13:00/19:00 Europe/London. Set `STARTUP_RUN_ON_BOOT=true` to run immediately on start.
+**Bot mode** (`DISCORD_TOKEN` + `DISCORD_CHANNEL_ID`): long-running; schedules runs at 01:00/07:00/13:00/19:00 Europe/London. Set `STARTUP_RUN_ON_BOOT=true` to run immediately on start.
 
 **One-shot** (`DISCORD_WEBHOOK_URL` + `npm run once` or `RUN_ONCE=true`): single cycle then exits. Does not start the scheduler.
 
+**Dashboard** (`npm run dashboard` → `node src/dashboard.js --port 3099`): separate HTTP server for analytics UI, run CSVs, and job table (not started by the bot). Env:
+
+- `DASHBOARD_HOST` — bind address (default `127.0.0.1`; `0.0.0.0` for all interfaces).
+- `DASHBOARD_TOKEN` — required when binding to a **non-loopback** host (refuses to listen otherwise).
+- `DASHBOARD_BASE_PATH` — optional URL prefix when served behind a reverse proxy (no trailing slash).
+
 ## Commands
 
-- `npm start` — bot mode
-- `npm run once` — one-shot mode
-- `npm run check` — syntax check
-- `npm test` — test suite
+- `npm start` — bot mode  
+- `npm run once` — one-shot mode  
+- `npm run check` — syntax check (includes dashboard and schema-related modules)  
+- `npm test` — test suite  
+- `npm run dashboard` — dashboard server (default port **3099**)  
+- `npm run backfill:extractors` — backfill extraction fields on existing DB rows  
 
 ## Data Model
 
-**`jobs` table** — deduplication key: `(title, company, source)`. Tracks notification status.
+**`jobs` table** — deduplication key: `(title, company, source)`. Tracks notification status, **RAG** and filter columns, **enrichment/extraction** fields, and dashboard-only **`applied` / `discarded`** flags (updated via dashboard API, merged into aggregates).
+
 **`run_log` table** — per-source, per-search execution stats.
+
+## Pipeline (mental model)
+
+1. Each adapter returns the normalized job shape; many sources call `isRelevantJob` early.  
+2. `index.js` runs seniority and salary checks, **`scoreJob` (RAG)**, then **`enrichJobDescription`** / **`extractJobSignals`** before `insertJob`.  
+3. Pending Discord notifications: rows with `notified = 0` and `filter_reason IS NULL` (`getPendingJobs`).  
+4. Dashboard uses a **read-only** SQLite connection where possible; writes **applied/discarded** via API.
 
 ## Normalized Job Shape
 
-All source adapters must return: `externalId`, `source`, `title`, `company`, `location`, `salaryMin`, `salaryMax`, `salaryText`, `isContract`, `url`, `postedAt`, `searchId`, `description`.
+Adapters must return at least: `externalId`, `source`, `title`, `company`, `location`, `salaryMin`, `salaryMax`, `salaryText`, `isContract`, `url`, `postedAt`, `searchId`, `description`.
+
+After scoring and extraction, persisted fields also include RAG (`ragRating`, `ragScore`, `ragReason`), filter outcomes (`seniorityPassed`, `salaryPassed`, `filterReason`), and extraction bundles (`remoteType`, `contractLengthMonths`, `sectors`, `clearances`, `techTools`, `yearsExperience`, bonus/equity fields — see `insertJob` in `src/db.js`).
 
 ## Notes
 
-- Source failures must not abort the full cycle
-- Pending jobs come from the DB, not only the current run
-- Serper results are cached in memory (query + location)
-- LinkedIn, Careerjet, JobServe, Construction Enquirer, and CV-Library require no API key
-- Adzuna, Reed, Serper, Jooble, and Guardian Jobs require credentials
-- Jobs are filtered for seniority via `src/utils/seniority.js` after source fetch
-- Guild-scoped slash commands only when `DISCORD_GUILD_ID` is set
-- Searches normalized in `src/config.js` — keep in sync with `data/searches.json` schema
+- Source failures must not abort the full cycle.  
+- Pending jobs come from the DB, not only the current run.  
+- Serper results are cached in memory (query + location).  
+- **No API key:** LinkedIn, Careerjet, JobServe, Construction Enquirer, CV-Library, **Rise Technical**.  
+- **Credentials:** Adzuna, Reed, Serper, Jooble, Guardian Jobs.  
+- Guild-scoped slash commands only when `DISCORD_GUILD_ID` is set.  
+- Searches normalized in `src/config.js` — keep in sync with `data/searches.json` schema.
 
 ## Development
 
-- Minimal changes, consistent ESM style
-- Fix shared behavior in utils, not per-source
-- Update `README.md` for setup/env/mode/search changes
-- Update tests for salary parsing, filtering, DB behavior
+- Minimal changes, consistent ESM style.  
+- Fix shared behavior in `src/utils/`, not per-source.  
+- Update `README.md` for setup/env/mode/search changes.  
+- Update tests for salary parsing, filtering, DB behavior.  
+- Schema changes belong in `src/jobs-schema.js` so both bot and dashboard migrate consistently.
 
 ## Validation
 
 ```bash
 npm run check && npm test
-# inspect DB state:
+```
+
+Inspect DB state:
+
+```bash
 node --input-type=module -e "import { getPendingJobs, getStats } from './src/db.js'; console.log(JSON.stringify({ pendingJobs: getPendingJobs().length, stats: getStats() }, null, 2));"
 ```
