@@ -56,6 +56,7 @@ export function getAllJobsForDashboard() {
         found_at, source, search_id, title, company, location,
         salary_text, salary_min, salary_max, is_contract, url, posted_at,
         notified, filter_reason, rag_rating, rag_score, rag_reason,
+        profile_rating, profile_score, profile_reason, profile_matches,
         remote_type, contract_length_months, sectors, clearances, tech_tools,
         years_experience, has_bonus, bonus_percent, car_allowance,
         pension_percent, has_equity, applied, discarded, expired
@@ -74,8 +75,9 @@ export function getJobPreview(title, company, source) {
   const db = ensureReadonlyDb();
   if (!previewStmt) {
     previewStmt = db.prepare(`
-      SELECT description, rag_matches, search_id, sectors, tech_tools, title, url,
-             rag_rating, rag_score, rag_reason
+      SELECT description, rag_matches, profile_matches, search_id, sectors, tech_tools, title, url,
+             rag_rating, rag_score, rag_reason,
+             profile_rating, profile_score, profile_reason
       FROM jobs
       WHERE title = ? AND source = ? AND company = ?
     `);
@@ -92,6 +94,15 @@ export function getJobPreview(title, company, source) {
     }
   }
 
+  let profileMatches = null;
+  if (row.profile_matches) {
+    try {
+      profileMatches = JSON.parse(row.profile_matches);
+    } catch {
+      profileMatches = null;
+    }
+  }
+
   const searches = loadSearches();
   const searchRow = searches.find((s) => s.id === row.search_id);
   const searchKeywords = searchRow?.keywords?.length ? [...searchRow.keywords] : [];
@@ -104,6 +115,10 @@ export function getJobPreview(title, company, source) {
     rag_score: row.rag_score ?? null,
     rag_reason: row.rag_reason ?? '',
     rag_matches: ragMatches,
+    profile_rating: row.profile_rating ?? '',
+    profile_score: row.profile_score ?? null,
+    profile_reason: row.profile_reason ?? '',
+    profile_matches: profileMatches,
     search_id: row.search_id ?? '',
     search_name: searchRow?.name ?? row.search_id ?? '',
     search_keywords: searchKeywords,
@@ -179,6 +194,9 @@ export function rowFromDbJob(job) {
     rag_rating: job.rag_rating ?? '',
     rag_score: job.rag_score ?? '',
     rag_reason: job.rag_reason ?? '',
+    profile_rating: job.profile_rating ?? '',
+    profile_score: job.profile_score ?? '',
+    profile_reason: job.profile_reason ?? '',
     remote_type: job.remote_type ?? '',
     contract_length_months: job.contract_length_months ?? '',
     sectors: job.sectors ?? '',

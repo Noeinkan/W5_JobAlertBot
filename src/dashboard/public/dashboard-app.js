@@ -29,6 +29,7 @@ const OUTCOME_COLORS = {
   filtered_salary:    '#fbbf24',
   filtered_match:     '#fb923c',
   filtered_rag:       '#e879f9',
+  filtered_profile:   '#c084fc',
 };
 const RAG_COLORS = { Green: '#4ade80', Amber: '#fbbf24', Red: '#f87171' };
 const PALETTE = ['#6366f1','#22d3ee','#f59e0b','#10b981','#ec4899','#a78bfa','#fb923c','#38bdf8','#84cc16','#e11d48'];
@@ -49,6 +50,7 @@ const HELP_TEXT = {
   throughput: 'What: Cumulative fetched/notified/filtered over sequence slices. Why: Understand throughput shape within this CSV. Read: Healthy runs usually increase notified steadily.',
   schedule: 'What: Day-hour activity heatmap from row timestamps. Why: Understand when captured jobs cluster. Read: Hot cells show active posting windows.',
   scatter: 'What: RAG score scatter by row order and outcome color. Why: Validate scoring vs decision outcomes. Read: Useful signals cluster at higher scores.',
+  profileFit: 'What: Green/Amber/Red split for CV-aligned profile fit (when enabled). Why: Shows personal relevance vs generic lexicon RAG. Read: Tune patterns in data/profile.json.',
   pipeline: 'What: High-level ingest pipeline for selected CSV rows. Why: Explain where each metric comes from. Read: Each stage transforms or filters rows.',
   schema: 'What: CSV row schema and derived metric grouping. Why: Clarify data lineage for charts. Read: Derived views are computed only from current file.',
 };
@@ -62,6 +64,9 @@ const COL_DEFS = [
   { key: 'rag_rating',  label: 'RAG',         type: 'select', defaultWidth: 72 },
   { key: 'rag_score',   label: 'Score',       type: 'text',   defaultWidth: 64 },
   { key: 'rag_reason',  label: 'Reason',      type: 'text',   defaultWidth: 200, wrap: true },
+  { key: 'profile_rating', label: 'Profile',  type: 'select', defaultWidth: 72 },
+  { key: 'profile_score',  label: 'Prof score', type: 'text', defaultWidth: 72 },
+  { key: 'profile_reason', label: 'Prof reason', type: 'text', defaultWidth: 180, wrap: true },
   { key: 'company',     label: 'Company',     type: 'text',   defaultWidth: 140 },
   { key: 'location',    label: 'Location',    type: 'text',   defaultWidth: 130 },
   { key: 'source',      label: 'Source',      type: 'select', defaultWidth: 100 },
@@ -72,6 +77,7 @@ const COL_DEFS = [
   { key: 'rateDisplay', label: 'Rate',        type: 'text',   defaultWidth: 130, isRate: true },
   { key: 'yearlyGross', label: '~Gross/yr',   type: 'text',   defaultWidth: 120, isYearly: 'gross' },
   { key: 'yearlyNet',   label: '~Net equiv',  type: 'text',   defaultWidth: 120, isYearly: 'net' },
+  { key: '_actions',      label: 'Actions',     type: 'actions', defaultWidth: 260 },
   { key: 'remote_type', label: 'Remote',      type: 'select', defaultWidth: 88 },
   { key: 'sectors',     label: 'Sectors',     type: 'text',   defaultWidth: 130 },
   { key: 'clearances',  label: 'Clearance',   type: 'select', defaultWidth: 92 },
@@ -83,7 +89,6 @@ const COL_DEFS = [
   { key: 'car_allowance',   label: 'Car',       type: 'text', defaultWidth: 80 },
   { key: 'pension_percent', label: 'Pension %', type: 'text', defaultWidth: 80 },
   { key: 'has_equity',    label: 'Equity',      type: 'select', defaultWidth: 72 },
-  { key: '_actions',      label: 'Actions',     type: 'actions', defaultWidth: 260 },
 ];
 const COL_DEFS_MAP = Object.fromEntries(COL_DEFS.map(c => [c.key, c]));
 const DEFAULT_COLUMN_ORDER = COL_DEFS.map(c => c.key);
@@ -202,6 +207,7 @@ function renderHelpGlossary() {
   const rows = [
     ['Filtered Match', 'Row filtered because description/title did not match search intent strongly enough.'],
     ['Filtered Seniority', 'Row removed because seniority signal did not match target level filters.'],
+    ['Filtered Profile', 'Row removed because CV/profile fit was Red while PROFILE_FIT_ENABLED is on.'],
     ['RAG Score', 'Numeric relevance score used alongside Green/Amber/Red rating for triage.'],
     ['Control Limits', 'Statistical upper/lower bounds for normal notified variation within selected CSV slices.'],
     ['Source Reliability', 'Share of rows from a source that are not errors inside this selected CSV.'],
@@ -255,6 +261,7 @@ function initHelpTips() {
 const CROSS_FILTER_LABELS = {
   outcome: 'Outcome',
   rag_rating: 'RAG',
+  profile_rating: 'Profile',
   source: 'Source',
   search_name: 'Search',
   salaryBucket: 'Salary band',
@@ -529,7 +536,7 @@ function renderTable() {
       cell = '<span class="' + cls + '">' + escHtml(v) + '</span>';
     } else if (c.key === 'outcome' && v) {
       cell = '<span class="badge ' + escHtml(v) + '">' + escHtml(v) + '</span>';
-    } else if (c.key === 'rag_rating' && v) {
+    } else if ((c.key === 'rag_rating' || c.key === 'profile_rating') && v) {
       cell = '<span class="badge ' + escHtml(v) + '">' + escHtml(v) + '</span>';
     } else if (c.key === 'is_contract') {
       cell = v === 'yes'
@@ -1038,13 +1045,14 @@ function render(data) {
       <div class="section-header">
         <span class="chev">▶</span>
         <h2>Overview</h2>
-        <span class="section-meta">7 visuals · click any slice to cross-filter the table</span>
+        <span class="section-meta">8 visuals · click any slice to cross-filter the table</span>
       </div>
       <div class="section-body">
         <div class="charts-grid">
           <div class="card" data-filter-key="outcome">${cardTitle('Outcome breakdown', 'outcome')}<div class="chart-wrap"><canvas id="cOutcome"></canvas></div></div>
           <div class="card" data-filter-key="jobType">${cardTitle('Perm vs Contract', 'contractSplit')}<div class="chart-wrap"><canvas id="cContract"></canvas></div></div>
           <div class="card" data-filter-key="rag_rating">${cardTitle('RAG rating (rated jobs)', 'rag')}<div class="chart-wrap"><canvas id="cRag"></canvas></div></div>
+          <div class="card" data-filter-key="profile_rating">${cardTitle('Profile fit (rated jobs)', 'profileFit')}<div class="chart-wrap"><canvas id="cProfile"></canvas></div></div>
           <div class="card" data-filter-key="source">${cardTitle('Jobs by source', 'source')}<div class="chart-wrap tall"><canvas id="cSource"></canvas></div></div>
           <div class="card" data-filter-key="search_name">${cardTitle('Jobs by search', 'search')}<div class="chart-wrap tall"><canvas id="cSearch"></canvas></div></div>
           <div class="card" data-filter-key="salaryBucket">${cardTitle('Salary range', 'salary')}<div class="chart-wrap"><canvas id="cSalary"></canvas></div></div>
@@ -1146,6 +1154,18 @@ function render(data) {
       .insertAdjacentHTML('beforeend', '<p style="color:#64748b;font-size:.82rem;margin-top:.5rem">No rated jobs in this run</p>');
   }
 
+  const profileLabels = Object.keys(data.byProfile || {});
+  if (profileLabels.length) {
+    mkChart('cProfile', 'doughnut', profileLabels, [{
+      data: profileLabels.map(l => data.byProfile[l]),
+      backgroundColor: profileLabels.map(l => RAG_COLORS[l] || '#94a3b8'),
+      borderWidth: 2, borderColor: '#1a1d27',
+    }], { onPick: ({ label }) => toggleCrossFilter('profile_rating', label) });
+  } else {
+    document.getElementById('cProfile').closest('.card')
+      .insertAdjacentHTML('beforeend', '<p style="color:#64748b;font-size:.82rem;margin-top:.5rem">No profile-rated jobs in this run</p>');
+  }
+
   const srcLabels = Object.keys(data.bySource).sort((a,b) => data.bySource[b]-data.bySource[a]);
   mkChart('cSource', 'bar', srcLabels, [{
     label: 'Jobs', data: srcLabels.map(l => data.bySource[l]),
@@ -1204,7 +1224,7 @@ function render(data) {
   });
 
   const searchEff = (analytics.searchEffectiveness || []).slice(0, 14);
-  const heatOutcomes = ['new', 'already_seen', 'filtered_match', 'filtered_seniority', 'filtered_salary', 'filtered_rag'];
+  const heatOutcomes = ['new', 'already_seen', 'filtered_match', 'filtered_seniority', 'filtered_salary', 'filtered_rag', 'filtered_profile'];
   const searchHeatData = [];
   searchEff.forEach((s, yi) => {
     heatOutcomes.forEach((o, xi) => {
@@ -1380,6 +1400,10 @@ function collectHighlightSpans(text, payload) {
   if (Array.isArray(rm.title)) addTerms(rm.title, 85, 'hl-rag-title');
   if (Array.isArray(rm.domain)) addTerms(rm.domain, 80, 'hl-rag-domain');
   if (Array.isArray(rm.experience)) addTerms(rm.experience, 75, 'hl-rag-exp');
+  const pm = payload.profile_matches || {};
+  if (Array.isArray(pm.positive)) addTerms(pm.positive, 82, 'hl-profile-pos');
+  if (Array.isArray(pm.negative)) addTerms(pm.negative, 77, 'hl-profile-neg');
+  if (Array.isArray(pm.titleNegative)) addTerms(pm.titleNegative, 83, 'hl-profile-title');
   addTerms(payload.tech_tools, 55, 'hl-tech');
   addTerms(payload.sectors, 45, 'hl-sector');
   return mergeHighlightSpans(spans);
@@ -1435,6 +1459,27 @@ function buildJobAnalysisHtml(data) {
     );
   }
 
+  const pr = data.profile_rating || '';
+  const pscore = data.profile_score;
+  if (pr || (pscore != null && pscore !== '')) {
+    chunks.push('<div class="job-preview-rag-summary">');
+    chunks.push('<span class="job-preview-label">Profile fit</span> ');
+    const pk = String(pr || '').trim().toLowerCase();
+    const pClass = pk === 'green' || pk === 'amber' || pk === 'red' ? pk : 'unknown';
+    chunks.push('<span class="badge rag-badge rag-badge-' + pClass + '">' + escHtml(pr || '—') + '</span>');
+    if (pscore != null && pscore !== '') {
+      chunks.push(' <span class="job-preview-score">score ' + escHtml(String(pscore)) + '</span>');
+    }
+    chunks.push('</div>');
+  }
+  if (data.profile_reason) {
+    chunks.push(
+      '<p class="job-preview-reason-text"><span class="job-preview-label">Profile reason</span> '
+      + escHtml(data.profile_reason)
+      + '</p>'
+    );
+  }
+
   const sid = data.search_id || '';
   const sname = data.search_name || '';
   if (sid || sname) {
@@ -1462,6 +1507,10 @@ function buildJobAnalysisHtml(data) {
   kwList(Array.isArray(rm.title) ? rm.title : [], 'RAG · title signals');
   kwList(Array.isArray(rm.domain) ? rm.domain : [], 'RAG · domain signals');
   kwList(Array.isArray(rm.experience) ? rm.experience : [], 'RAG · experience signals');
+  const pm = data.profile_matches || {};
+  kwList(Array.isArray(pm.positive) ? pm.positive : [], 'Profile · positive signals');
+  kwList(Array.isArray(pm.negative) ? pm.negative : [], 'Profile · downrank signals');
+  kwList(Array.isArray(pm.titleNegative) ? pm.titleNegative : [], 'Profile · title signals');
   kwList(data.tech_tools, 'Extracted tools');
   kwList(data.sectors, 'Extracted sectors');
 
@@ -1480,7 +1529,7 @@ function buildJobAnalysisHtml(data) {
 }
 
 function jobPreviewLegendHtml() {
-  return '<span class="hl-key"><mark class="hl-search">Search</mark> <mark class="hl-rag-title">RAG title</mark> <mark class="hl-rag-domain">RAG domain</mark> <mark class="hl-rag-exp">RAG experience</mark> <mark class="hl-tech">Tools</mark> <mark class="hl-sector">Sectors</mark></span>';
+  return '<span class="hl-key"><mark class="hl-search">Search</mark> <mark class="hl-rag-title">RAG title</mark> <mark class="hl-rag-domain">RAG domain</mark> <mark class="hl-rag-exp">RAG experience</mark> <mark class="hl-profile-pos">Profile +</mark> <mark class="hl-profile-neg">Profile −</mark> <mark class="hl-tech">Tools</mark> <mark class="hl-sector">Sectors</mark></span>';
 }
 
 function ensureJobPreviewModal() {

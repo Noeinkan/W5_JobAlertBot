@@ -325,6 +325,9 @@ body.col-resizing{cursor:col-resize;user-select:none}
 .job-preview-prose mark.hl-rag-title{background:rgba(52,211,153,.28);color:#d1fae5}
 .job-preview-prose mark.hl-rag-domain{background:rgba(251,191,36,.28);color:#fef3c7}
 .job-preview-prose mark.hl-rag-exp{background:rgba(244,114,182,.22);color:#fce7f3}
+.job-preview-prose mark.hl-profile-pos{background:rgba(34,211,238,.22);color:#cffafe}
+.job-preview-prose mark.hl-profile-neg{background:rgba(248,113,113,.22);color:#fee2e2}
+.job-preview-prose mark.hl-profile-title{background:rgba(167,139,250,.22);color:#ede9fe}
 .job-preview-prose mark.hl-tech{background:rgba(56,189,248,.22);color:#e0f2fe}
 .job-preview-prose mark.hl-sector{background:rgba(167,139,250,.22);color:#ede9fe}
 .job-preview-footer{margin-top:.65rem;font-size:.82rem}

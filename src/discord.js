@@ -121,23 +121,34 @@ function getPostedText(postedAt) {
   return `<t:${Math.floor(date.getTime() / 1000)}:R>`;
 }
 
-const RAG_COLOR = { Green: 0x2ecc71, Amber: 0xf39c12 };
-const RAG_ICON = { Green: '🟢', Amber: '🟡' };
+const RAG_COLOR = { Green: 0x2ecc71, Amber: 0xf39c12, Red: 0xe74c3c };
+const RAG_ICON = { Green: '🟢', Amber: '🟡', Red: '🔴' };
 
 export function buildJobEmbed(job) {
-  const rating = job.ragRating ?? 'Amber';
-  const color = RAG_COLOR[rating] ?? 0xf39c12;
-  const icon = RAG_ICON[rating] ?? '🟡';
+  const useProfile =
+    env.profileFitEnabled && job.profileRating != null && String(job.profileRating).length > 0;
+  const displayRating = useProfile ? job.profileRating : (job.ragRating ?? 'Amber');
+  const color = RAG_COLOR[displayRating] ?? 0xf39c12;
+  const icon = RAG_ICON[displayRating] ?? '🟡';
   const contractLabel = job.isContract ? ' · CONTRACT' : '';
-  const banner = `${rating.toUpperCase()} MATCH${contractLabel}`;
+  const banner = `${displayRating.toUpperCase()} MATCH${contractLabel}`;
   const tags = job.tags?.length > 0
     ? job.tags.map((tag) => `#${tag}`).join(' ')
     : `#${job.searchId} ${job.isContract ? '#contract' : '#permanent'}`;
 
   const applyLine = job.url ? `[Apply Here](${job.url})` : 'Apply link unavailable';
-  const scoreLabel = job.ragScore != null
-    ? `${icon} ${rating} (score: ${job.ragScore})${job.ragReason ? ` — ${job.ragReason}` : ''}`
-    : null;
+  const ragIcon = RAG_ICON[job.ragRating] ?? '🟡';
+  const ragRatingLabel = job.ragRating ?? 'Amber';
+  const profileScoreLine =
+    useProfile && job.profileScore != null
+      ? `${icon} Profile: ${job.profileRating} (score: ${job.profileScore})${job.profileReason ? ` — ${job.profileReason}` : ''}`
+      : null;
+  const lexiconScoreLine =
+    job.ragScore != null
+      ? (useProfile
+        ? `${ragIcon} Lexicon RAG: ${ragRatingLabel} (score: ${job.ragScore})${job.ragReason ? ` — ${job.ragReason}` : ''}`
+        : `${ragIcon} ${ragRatingLabel} (score: ${job.ragScore})${job.ragReason ? ` — ${job.ragReason}` : ''}`)
+      : null;
 
   const embed = new EmbedBuilder()
     .setColor(color)
@@ -149,7 +160,8 @@ export function buildJobEmbed(job) {
       `💰 ${job.salaryText || 'Salary not listed'}`,
       `📅 Posted: ${getPostedText(job.postedAt)}`,
       `🔗 Source: ${getSourceLabel(job.source)}`,
-      scoreLabel,
+      profileScoreLine,
+      lexiconScoreLine,
       applyLine,
       `Tags: ${tags}`,
     ].filter(Boolean).join('\n'));

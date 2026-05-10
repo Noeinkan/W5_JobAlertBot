@@ -1,0 +1,65 @@
+{
+  "version": 1,
+  "greenThreshold": 10,
+  "amberThreshold": 4,
+  "positivePatterns": [
+    { "pattern": "iso\\s*19650", "weight": 7, "label": "ISO 19650" },
+    { "pattern": "common data environment|\\bcde\\b", "weight": 6, "label": "CDE" },
+    { "pattern": "\\bbim\\b|building information model", "weight": 5, "label": "BIM" },
+    { "pattern": "asset information|employer.s information requirement|\\beir\\b|\\bbep\\b|information management", "weight": 6, "label": "IM / EIR / BEP" },
+    { "pattern": "digital delivery|digital engineering methodology|client-side digital", "weight": 4, "label": "Digital delivery" },
+    { "pattern": "construction programme|capital project|aec\\b|built environment", "weight": 4, "label": "AEC / capital delivery" },
+    { "pattern": "transmission|substation|grid partnership|national grid|nuclear|sellafield|renewables infrastructure", "weight": 4, "label": "Energy / infrastructure programme" },
+    { "pattern": "projectwise|autodesk construction cloud|\\bacc\\b|bim\\s*360", "weight": 3, "label": "CDE tooling" },
+    { "pattern": "digital twin.*asset|asset lifecycle", "weight": 3, "label": "Digital twin / asset" }
+  ],
+  "negativePatterns": [
+    {
+      "pattern": "\\bdatabricks\\b",
+      "weight": -10,
+      "label": "Data platform vendor stack",
+      "unless": [
+        "iso\\s*19650",
+        "common data environment|\\bcde\\b",
+        "\\bbim\\b",
+        "construction",
+        "aec\\b",
+        "built environment",
+        "capital project",
+        "asset information"
+      ]
+    },
+    {
+      "pattern": "data\\s*&?\\s*digital\\s+platforms|\\bdata platforms\\b",
+      "weight": -8,
+      "label": "Generic data/digital platforms",
+      "unless": [
+        "iso\\s*19650",
+        "common data environment|\\bcde\\b",
+        "\\bbim\\b",
+        "construction",
+        "aec\\b",
+        "asset information",
+        "information management"
+      ]
+    },
+    {
+      "pattern": "multiple squads|vendor squads|globally distributed engineering teams",
+      "weight": -5,
+      "label": "Software org scaling",
+      "unless": [
+        "iso\\s*19650",
+        "common data environment|\\bcde\\b",
+        "construction programme",
+        "aec\\b"
+      ]
+    }
+  ],
+  "titleNegativePatterns": [
+    {
+      "pattern": "engineering manager.*databricks|databricks.*engineering manager",
+      "weight": -12,
+      "label": "Databricks EM title"
+    }
+  ]
+}

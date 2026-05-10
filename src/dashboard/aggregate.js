@@ -157,6 +157,7 @@ export function aggregate(rows) {
   const bySource  = {};
   const bySearch  = {};
   const byRag     = {};
+  const byProfile = {};
   const salaryVals = [];
 
   const contractRates = { day: [], hour: [] };
@@ -167,6 +168,7 @@ export function aggregate(rows) {
     const label = r.search_name || r.search_id || 'unknown';
     bySearch[label]      = (bySearch[label]      || 0) + 1;
     if (r.rag_rating)    byRag[r.rag_rating]     = (byRag[r.rag_rating] || 0) + 1;
+    if (r.profile_rating) byProfile[r.profile_rating] = (byProfile[r.profile_rating] || 0) + 1;
     if (r.salary_min && Number(r.salary_min) > 0) salaryVals.push(Number(r.salary_min));
 
     const rate = detectRate(r);
@@ -210,7 +212,7 @@ export function aggregate(rows) {
     permCount:     byContract.Perm,
     runAt:       rows[0]?.run_at  ?? '',
     trigger:     rows[0]?.trigger ?? '',
-    byOutcome, bySource, bySearch, byRag, salaryBuckets, byContract,
+    byOutcome, bySource, bySearch, byRag, byProfile, salaryBuckets, byContract,
     contractRates,
     analytics: deriveAnalytics(rows, byOutcome),
     rows,

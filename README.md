@@ -112,6 +112,15 @@ cp .env.example .env
 - `STARTUP_RUN_ON_BOOT`: run one search cycle on startup, default `false`
 - `RUN_ONCE`: alternate flag for one-shot execution, default `false`
 
+### Profile fit (CV-aligned second score)
+
+When enabled, each job is scored against [`data/profile.json`](data/profile.json) after the lexicon RAG pass. Jobs with **Profile Red** are stored with `filter_reason = filtered_profile` and are **not** notified on Discord. The lexicon RAG columns (`rag_*`) stay independent so you can compare both layers in the dashboard.
+
+- `PROFILE_FIT_ENABLED`: set to `true`, `1`, or `yes` to turn on (default: off)
+- `PROFILE_FIT_PATH`: optional path to an alternate profile JSON (defaults to `data/profile.json` relative to the project root)
+
+Edit the patterns and thresholds in `data/profile.json` to match your CV — positives, negatives with optional `unless` rescue lists, and optional `titleNegativePatterns`.
+
 ## API Registration Links
 
 - Adzuna: https://developer.adzuna.com/

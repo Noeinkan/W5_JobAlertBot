@@ -26,6 +26,10 @@ function createStatements(db) {
         rag_score,
         rag_reason,
         rag_matches,
+        profile_rating,
+        profile_score,
+        profile_reason,
+        profile_matches,
         seniority_passed,
         salary_passed,
         filter_reason,
@@ -59,6 +63,10 @@ function createStatements(db) {
         @rag_score,
         @rag_reason,
         @rag_matches,
+        @profile_rating,
+        @profile_score,
+        @profile_reason,
+        @profile_matches,
         @seniority_passed,
         @salary_passed,
         @filter_reason,
@@ -145,7 +153,11 @@ function createStatements(db) {
         posted_at,
         rag_rating,
         rag_score,
-        rag_reason
+        rag_reason,
+        profile_rating,
+        profile_score,
+        profile_reason,
+        profile_matches
       FROM jobs
       WHERE notified = 0
         AND filter_reason IS NULL
@@ -210,6 +222,10 @@ export function createDatabase(databasePath = appConfig.dbPath) {
         rag_score: Number.isFinite(job.ragScore) ? job.ragScore : null,
         rag_reason: job.ragReason ?? null,
         rag_matches: job.ragMatches != null ? JSON.stringify(job.ragMatches) : null,
+        profile_rating: job.profileRating ?? null,
+        profile_score: Number.isFinite(job.profileScore) ? job.profileScore : null,
+        profile_reason: job.profileReason ?? null,
+        profile_matches: job.profileMatches != null ? JSON.stringify(job.profileMatches) : null,
         seniority_passed: job.seniorityPassed == null ? null : job.seniorityPassed ? 1 : 0,
         salary_passed: job.salaryPassed == null ? null : job.salaryPassed ? 1 : 0,
         filter_reason: job.filterReason ?? null,
@@ -272,6 +288,9 @@ export function createDatabase(databasePath = appConfig.dbPath) {
           rag_rating,
           rag_score,
           rag_reason,
+          profile_rating,
+          profile_score,
+          profile_reason,
           remote_type,
           contract_length_months,
           sectors,
@@ -323,6 +342,17 @@ export function createDatabase(databasePath = appConfig.dbPath) {
         ragRating: job.rag_rating,
         ragScore: job.rag_score,
         ragReason: job.rag_reason,
+        profileRating: job.profile_rating,
+        profileScore: job.profile_score,
+        profileReason: job.profile_reason,
+        profileMatches: (() => {
+          if (!job.profile_matches) return null;
+          try {
+            return JSON.parse(job.profile_matches);
+          } catch {
+            return null;
+          }
+        })(),
       }));
     },
     close() {

@@ -43,6 +43,7 @@ import { isSeniorEnough } from './utils/seniority.js';
 import { enrichJobDescription } from './utils/enrich.js';
 import { extractJobSignals, mergeJobSignals } from './utils/extractors.js';
 import { createRunCsvLog } from './utils/run_log_csv.js';
+import { loadProfileFitConfig, scoreProfileFit } from './utils/profileFit.js';
 
 const client = hasDiscordBotConfig() ? createDiscordClient() : null;
 const sourceClients = [
@@ -149,10 +150,25 @@ async function runSearchCycle(trigger = 'scheduled') {
     filteredNotRelevant: 0,
     filteredSeniority: 0,
     filteredRag: 0,
+    filteredProfile: 0,
     alreadySeen: 0,
   };
   const csvLog = createRunCsvLog(trigger);
   const warnedUnconfigured = new Set();
+
+  let profileFitConfigPath = null;
+  if (env.profileFitEnabled) {
+    try {
+      loadProfileFitConfig(env.profileFitPath);
+      profileFitConfigPath = env.profileFitPath;
+      logger.info('Profile fit enabled', { path: env.profileFitPath });
+    } catch (err) {
+      logger.warn('Profile fit disabled: could not load profile config', {
+        path: env.profileFitPath,
+        message: err.message,
+      });
+    }
+  }
 
   logger.info('Starting search cycle', {
     trigger,
@@ -235,6 +251,18 @@ async function runSearchCycle(trigger = 'scheduled') {
             const seniority = isSeniorEnough(job);
             const { rating, score, reason, matches } = scoreJob(job);
 
+            let profileRating = null;
+            let profileScore = null;
+            let profileReason = null;
+            let profileMatches = null;
+            if (profileFitConfigPath) {
+              const pf = scoreProfileFit(job, profileFitConfigPath);
+              profileRating = pf.rating;
+              profileScore = pf.score;
+              profileReason = pf.reason;
+              profileMatches = pf.matches;
+            }
+
             let filterReason = null;
             if (!salaryPassed) {
               filterReason = 'filtered_salary';
@@ -245,6 +273,9 @@ async function runSearchCycle(trigger = 'scheduled') {
             } else if (rating === 'Red') {
               filterReason = 'filtered_rag';
               cycleStats.filteredRag += 1;
+            } else if (profileFitConfigPath && profileRating === 'Red') {
+              filterReason = 'filtered_profile';
+              cycleStats.filteredProfile += 1;
             }
 
             scoredJobs.push({
@@ -255,6 +286,10 @@ async function runSearchCycle(trigger = 'scheduled') {
                 ragScore: score,
                 ragReason: reason,
                 ragMatches: matches,
+                profileRating,
+                profileScore,
+                profileReason,
+                profileMatches,
                 seniorityPassed: seniority.passes,
                 salaryPassed,
                 filterReason,
@@ -270,6 +305,9 @@ async function runSearchCycle(trigger = 'scheduled') {
                 rag_rating: rating,
                 rag_score: score,
                 rag_reason: reason,
+                profile_rating: profileRating ?? '',
+                profile_score: profileScore ?? '',
+                profile_reason: profileReason ?? '',
                 remote_type: job.remoteType ?? '',
                 contract_length_months: job.contractLengthMonths ?? '',
                 sectors: (job.sectors ?? []).join('|'),
@@ -365,6 +403,7 @@ async function runSearchCycle(trigger = 'scheduled') {
       filteredNotRelevant: cycleStats.filteredNotRelevant,
       filteredSeniority: cycleStats.filteredSeniority,
       filteredRag: cycleStats.filteredRag,
+      filteredProfile: cycleStats.filteredProfile,
       newJobsMatchingCriteria: newJobs.length,
       alreadySeen: cycleStats.alreadySeen,
       sentToDiscord: pendingJobs.length,
