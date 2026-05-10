@@ -525,7 +525,8 @@ main{padding:.6rem 1rem 1.5rem;display:flex;flex-direction:column;gap:.65rem}
 .section[data-section="table"]{display:flex;flex-direction:column}
 .section[data-section="table"] .section-body{padding:.55rem .7rem}
 .section[data-section="table"] .table-card{display:flex;flex-direction:column;background:transparent;border:none;padding:0}
-.section[data-section="table"] .table-wrap{max-height:70vh;min-height:420px}
+.section[data-section="table"] .table-scroll-outer{min-height:360px}
+.section[data-section="table"] #tableWrap{min-height:280px}
 .section[data-section="overview"]{flex:0 1 auto}
 .section[data-section="overview"] .section-body{overflow:visible}
 .section[data-section="overview"] .chart-wrap{height:210px}
@@ -597,6 +598,7 @@ main{padding:.6rem 1rem 1.5rem;display:flex;flex-direction:column;gap:.65rem}
 .help-glossary h2{font-size:.78rem;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:.06em;margin-bottom:.7rem}
 .help-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:.75rem}
 .help-item{font-size:.8rem;color:#cbd5e1;background:#161a29;border:1px solid #222741;border-radius:8px;padding:.6rem .7rem}
+.dash-layout-hidden{display:none!important}
 .help-item strong{display:block;color:#a5b4fc;font-size:.74rem;text-transform:uppercase;letter-spacing:.04em;margin-bottom:.25rem}
 .diagram-card{background:#1a1d27;border:1px solid #2d3148;border-radius:10px;padding:1.1rem}
 .diagram-header{display:flex;align-items:center;justify-content:space-between;gap:.6rem;flex-wrap:wrap;margin-bottom:.7rem}
@@ -612,7 +614,7 @@ main{padding:.6rem 1rem 1.5rem;display:flex;flex-direction:column;gap:.65rem}
 .schema-join{color:#818cf8;font-weight:700}
 
 /* ── Table section ── */
-.table-card{background:#1a1d27;border:1px solid #2d3148;border-radius:10px;padding:1.1rem}
+.table-card{background:#1a1d27;border:1px solid #2d3148;border-radius:10px;padding:1.1rem;display:flex;flex-direction:column;min-height:0}
 .table-toolbar{display:flex;align-items:center;gap:.75rem;margin-bottom:.9rem;flex-wrap:wrap}
 .table-toolbar h2{font-size:.78rem;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:.06em;flex:1;min-width:120px}
 #globalSearch{background:#252836;color:#e2e8f0;border:1px solid #3d4268;border-radius:6px;padding:.35rem .7rem;font-size:.83rem;width:220px}
@@ -629,7 +631,7 @@ main{padding:.6rem 1rem 1.5rem;display:flex;flex-direction:column;gap:.65rem}
 .action-btn.act-discard{background:#1e2235;color:#94a3b8;border-color:#2d3148}
 .action-btn.act-discard:hover{background:#2a1a1a;color:#f87171;border-color:#7f1d1d}
 .action-btn.act-discard.active{background:#2a1a1a;color:#f87171;border-color:#7f1d1d}
-.table-wrap{overflow:auto;border-radius:6px;border:1px solid #2d3148;max-height:60vh}
+.table-wrap{flex:1;min-height:0;overflow-y:auto;overflow-x:auto;border:none;border-radius:0;border-bottom:none}
 table{width:100%;border-collapse:collapse;font-size:.8rem;min-width:900px}
 thead tr.header-row th{background:#1e2235;color:#94a3b8;font-weight:600;text-transform:uppercase;font-size:.72rem;letter-spacing:.05em;padding:.55rem .7rem;white-space:nowrap;border-bottom:1px solid #2d3148;position:sticky;top:0;z-index:10;user-select:none}
 thead tr.header-row th.sortable{cursor:pointer}
@@ -665,8 +667,32 @@ tbody td a:hover{text-decoration:underline}
 .badge.Red  {background:#3b1111;color:#f87171}
 .badge.contract{background:#1e3a5f;color:#38bdf8}
 .badge.perm    {background:#1e2235;color:#64748b}
-.bottom-scroll-wrap{overflow-x:auto;overflow-y:hidden;height:14px;position:sticky;bottom:0;background:#1a1d27;border-top:1px solid #2d3148;z-index:20}
+.bottom-scroll-wrap{overflow-x:auto;overflow-y:hidden;height:14px;flex-shrink:0;background:#1a1d27;border-top:1px solid #2d3148;z-index:25}
 .bottom-scroll-inner{height:1px}
+.table-scroll-outer{display:flex;flex-direction:column;flex:1;min-height:0;max-height:min(72vh,calc(100vh - 140px));border-radius:6px;border:1px solid #2d3148}
+.section[data-section="table"] .table-scroll-outer{max-height:min(72vh,calc(100vh - 140px))}
+#tableWrap.hide-h-scrollbar{scrollbar-width:thin}
+#tableWrap.hide-h-scrollbar::-webkit-scrollbar:horizontal{height:0}
+#tableWrap.hide-h-scrollbar::-webkit-scrollbar{width:10px}
+.table-toolbar .layout-tools{display:flex;align-items:center;gap:.45rem;flex-wrap:wrap;margin-left:auto}
+.table-toolbar .layout-tools label{font-size:.68rem;color:#64748b;text-transform:uppercase}
+.table-toolbar .layout-tools select,.table-toolbar .layout-tools input{background:#252836;color:#e2e8f0;border:1px solid #3d4268;border-radius:6px;padding:.25rem .45rem;font-size:.78rem}
+.table-toolbar .layout-tools button{font-size:.72rem;padding:.25rem .5rem}
+.table-toolbar .layout-tools-sep{width:1px;height:18px;background:#2d3148;margin:0 .15rem}
+.table-toolbar .layout-tools-diag{display:inline-flex;align-items:center;gap:.45rem;flex-wrap:wrap}
+.table-toolbar .dash-diag-chk{font-size:.72rem;color:#94a3b8;display:inline-flex;align-items:center;gap:.2rem;cursor:pointer}
+.table-toolbar .dash-diag-chk input{accent-color:#6366f1;cursor:pointer}
+thead tr.header-row th.col-sticky,tbody td.col-sticky{position:sticky;background:#1e2235;box-shadow:2px 0 6px rgba(0,0,0,.35)}
+thead tr.header-row th.col-sticky{z-index:40;background:#252836}
+tbody td.col-sticky{z-index:15;background:#14171f}
+tbody tr:hover td.col-sticky{background:#1e2235}
+thead tr.header-row th.th-col{position:relative;padding-right:14px}
+thead tr.header-row th.th-col .th-label{display:inline;pointer-events:none}
+thead tr.header-row th.th-col .col-drag{cursor:grab;color:#64748b;margin-right:.25rem;font-size:.65rem;opacity:.85}
+thead tr.header-row th.th-col .col-drag:active{cursor:grabbing}
+thead tr.header-row th .col-resize{position:absolute;right:0;top:0;bottom:0;width:8px;cursor:col-resize;z-index:50}
+thead tr.header-row th .col-resize:hover{background:rgba(99,102,241,.25)}
+body.col-resizing{cursor:col-resize;user-select:none}
 .cr-note{font-size:.72rem;color:#475569;margin-bottom:.5rem;font-style:italic}
 .cr-row{display:flex;align-items:center;gap:.75rem;padding:.55rem 0;border-bottom:1px solid #1e2235;flex-wrap:wrap}
 .cr-row:last-child{border-bottom:none}
@@ -709,7 +735,7 @@ tbody td a:hover{text-decoration:underline}
   main{padding:.6rem .75rem 1rem}
   #preMain{padding:.55rem .75rem 0}
   #preMain:has(section:not([style*="display: none"])){padding:.55rem .75rem 0}
-  .section[data-section="table"] .table-wrap{max-height:60vh;min-height:320px}
+  .section[data-section="table"] .table-scroll-outer{max-height:60vh;min-height:320px}
   .section[data-section="overview"] .section-body,
   .section[data-section="advanced"] .section-body{overflow:visible}
   .charts-grid{grid-template-columns:1fr}
@@ -737,7 +763,7 @@ tbody td a:hover{text-decoration:underline}
   .card{padding:.75rem}
   .help-grid,.diagram-grid{grid-template-columns:1fr}
   .table-toolbar{gap:.5rem}
-  .table-wrap{max-height:55vh}
+  .table-scroll-outer{max-height:55vh}
   .bottom-scroll-wrap{height:18px}
 }
 </style>
@@ -818,38 +844,109 @@ const HELP_TEXT = {
   schema: 'What: CSV row schema and derived metric grouping. Why: Clarify data lineage for charts. Read: Derived views are computed only from current file.',
 };
 
-// ── Table columns definition ──────────────────────────────────────────────────
-const COLS = [
-  { key: 'url',         label: 'Link',        type: 'text',   width: '60px',  isLink: true },
-  { key: 'title',       label: 'Title',       type: 'text',   width: '220px' },
-  { key: 'company',     label: 'Company',     type: 'text',   width: '140px' },
-  { key: 'location',    label: 'Location',    type: 'text',   width: '130px' },
-  { key: 'source',      label: 'Source',      type: 'select', width: '100px' },
-  { key: 'search_name', label: 'Search',      type: 'select', width: '150px' },
-  { key: 'salary_text', label: 'Salary',      type: 'text',   width: '130px' },
-  { key: 'is_contract', label: 'Contract',    type: 'select', width: '85px'  },
-  { key: 'rateType',    label: 'Rate type',  type: 'select', width: '85px'  },
-  { key: 'rateDisplay', label: 'Rate',       type: 'text',   width: '130px', isRate: true },
-  { key: 'yearlyGross', label: '~Gross/yr',  type: 'text',   width: '130px', isYearly: 'gross' },
-  { key: 'yearlyNet',   label: '~Net equiv', type: 'text',   width: '130px', isYearly: 'net'   },
-  { key: 'remote_type',            label: 'Remote',        type: 'select', width: '85px'  },
-  { key: 'sectors',                label: 'Sectors',       type: 'text',   width: '130px' },
-  { key: 'clearances',             label: 'Clearance',     type: 'select', width: '90px'  },
-  { key: 'outcome',     label: 'Outcome',     type: 'select', width: '130px' },
-  { key: 'rag_rating',  label: 'RAG',         type: 'select', width: '70px'  },
-  { key: 'rag_score',   label: 'Score',       type: 'text',   width: '60px'  },
-  { key: 'rag_reason',  label: 'Reason',      type: 'text',   width: '200px', wrap: true },
-  { key: 'posted_at',   label: 'Posted',      type: 'text',   width: '110px' },
-  { key: 'found_at',    label: 'First seen',  type: 'text',   width: '140px' },
-  { key: 'tech_tools',             label: 'Tools',         type: 'text',   width: '180px', wrap: true },
-  { key: 'years_experience',       label: 'Years',         type: 'text',   width: '55px'  },
-  { key: 'contract_length_months', label: 'Length (mo)',   type: 'text',   width: '80px'  },
-  { key: 'bonus_percent',          label: 'Bonus %',       type: 'text',   width: '75px'  },
-  { key: 'car_allowance',          label: 'Car',           type: 'text',   width: '80px'  },
-  { key: 'pension_percent',        label: 'Pension %',     type: 'text',   width: '80px'  },
-  { key: 'has_equity',             label: 'Equity',        type: 'select', width: '70px'  },
-  { key: '_actions',               label: 'Actions',       type: 'actions', width: '175px' },
+// ── Table columns (canonical defs + sensible default order) ──────────────────
+const COL_DEFS = [
+  { key: 'url',         label: 'Link',        type: 'text',   defaultWidth: 72,  isLink: true, sticky: 1 },
+  { key: 'title',       label: 'Title',       type: 'text',   defaultWidth: 220, sticky: 2 },
+  { key: 'outcome',     label: 'Outcome',     type: 'select', defaultWidth: 130 },
+  { key: 'rag_rating',  label: 'RAG',         type: 'select', defaultWidth: 72 },
+  { key: 'rag_score',   label: 'Score',       type: 'text',   defaultWidth: 64 },
+  { key: 'rag_reason',  label: 'Reason',      type: 'text',   defaultWidth: 200, wrap: true },
+  { key: 'company',     label: 'Company',     type: 'text',   defaultWidth: 140 },
+  { key: 'location',    label: 'Location',    type: 'text',   defaultWidth: 130 },
+  { key: 'source',      label: 'Source',      type: 'select', defaultWidth: 100 },
+  { key: 'search_name', label: 'Search',      type: 'select', defaultWidth: 150 },
+  { key: 'salary_text', label: 'Salary',      type: 'text',   defaultWidth: 130 },
+  { key: 'is_contract', label: 'Contract',    type: 'select', defaultWidth: 88 },
+  { key: 'rateType',    label: 'Rate type',   type: 'select', defaultWidth: 88 },
+  { key: 'rateDisplay', label: 'Rate',        type: 'text',   defaultWidth: 130, isRate: true },
+  { key: 'yearlyGross', label: '~Gross/yr',   type: 'text',   defaultWidth: 120, isYearly: 'gross' },
+  { key: 'yearlyNet',   label: '~Net equiv',  type: 'text',   defaultWidth: 120, isYearly: 'net' },
+  { key: 'remote_type', label: 'Remote',      type: 'select', defaultWidth: 88 },
+  { key: 'sectors',     label: 'Sectors',     type: 'text',   defaultWidth: 130 },
+  { key: 'clearances',  label: 'Clearance',   type: 'select', defaultWidth: 92 },
+  { key: 'posted_at',   label: 'Posted',      type: 'text',   defaultWidth: 110 },
+  { key: 'found_at',    label: 'First seen',  type: 'text',   defaultWidth: 140 },
+  { key: 'tech_tools',  label: 'Tools',       type: 'text',   defaultWidth: 180, wrap: true },
+  { key: 'years_experience',       label: 'Years',       type: 'text', defaultWidth: 56 },
+  { key: 'contract_length_months', label: 'Length (mo)', type: 'text', defaultWidth: 82 },
+  { key: 'bonus_percent',   label: 'Bonus %',   type: 'text', defaultWidth: 76 },
+  { key: 'car_allowance',   label: 'Car',       type: 'text', defaultWidth: 80 },
+  { key: 'pension_percent', label: 'Pension %', type: 'text', defaultWidth: 80 },
+  { key: 'has_equity',    label: 'Equity',      type: 'select', defaultWidth: 72 },
+  { key: '_actions',      label: 'Actions',     type: 'actions', defaultWidth: 175 },
 ];
+const COL_DEFS_MAP = Object.fromEntries(COL_DEFS.map(c => [c.key, c]));
+const DEFAULT_COLUMN_ORDER = COL_DEFS.map(c => c.key);
+
+const LAYOUT_STORAGE_KEY = 'dashboardLayoutV1';
+const TEMPLATE_STORAGE_KEY = 'dashboardTemplatesV1';
+
+const DEFAULT_DIAGRAM_OPTS = { overview: true, advanced: true, pipeline: true, glossary: true };
+
+let layoutState = null;
+let lastDashboardData = null;
+
+function normColumnOrder(order) {
+  const seen = new Set();
+  const out = [];
+  for (const k of order || []) {
+    if (COL_DEFS_MAP[k] && !seen.has(k)) { seen.add(k); out.push(k); }
+  }
+  for (const c of COL_DEFS) {
+    if (!seen.has(c.key)) out.push(c.key);
+  }
+  return out;
+}
+
+function loadLayoutState() {
+  try {
+    const raw = localStorage.getItem(LAYOUT_STORAGE_KEY);
+    if (raw) {
+      const p = JSON.parse(raw);
+      return {
+        columnOrder: normColumnOrder(p.columnOrder),
+        columnWidths: typeof p.columnWidths === 'object' && p.columnWidths ? p.columnWidths : {},
+        diagrams: { ...DEFAULT_DIAGRAM_OPTS, ...(p.diagrams || {}) },
+      };
+    }
+  } catch { /* ignore */ }
+  return {
+    columnOrder: [...DEFAULT_COLUMN_ORDER],
+    columnWidths: {},
+    diagrams: { ...DEFAULT_DIAGRAM_OPTS },
+  };
+}
+
+function saveLayoutState() {
+  try {
+    localStorage.setItem(LAYOUT_STORAGE_KEY, JSON.stringify(layoutState));
+  } catch { /* ignore */ }
+}
+
+function loadNamedTemplates() {
+  try {
+    return JSON.parse(localStorage.getItem(TEMPLATE_STORAGE_KEY) || '{}');
+  } catch { return {}; }
+}
+
+function saveNamedTemplates(obj) {
+  try {
+    localStorage.setItem(TEMPLATE_STORAGE_KEY, JSON.stringify(obj));
+  } catch { /* ignore */ }
+}
+
+function getCols() {
+  if (!layoutState) layoutState = loadLayoutState();
+  const order = layoutState.columnOrder;
+  const widths = layoutState.columnWidths || {};
+  return order.map(key => {
+    const def = COL_DEFS_MAP[key];
+    if (!def) return null;
+    const w = widths[key] != null ? widths[key] : def.defaultWidth;
+    return { ...def, width: Math.max(40, w) + 'px' };
+  }).filter(Boolean);
+}
 
 // ── Chart helpers ─────────────────────────────────────────────────────────────
 let charts = [];
@@ -1101,7 +1198,8 @@ function getVisible() {
   // global search
   if (globalQ) {
     const q = globalQ.toLowerCase();
-    rows = rows.filter(r => COLS.some(c => (r[c.key] || '').toLowerCase().includes(q)));
+    const cols = getCols();
+    rows = rows.filter(r => cols.some(c => (r[c.key] || '').toLowerCase().includes(q)));
   }
 
   // per-column filters
@@ -1136,7 +1234,8 @@ function renderTable() {
 
   // body
   const tbody = document.getElementById('tBody');
-  tbody.innerHTML = visible.map(r => '<tr>' + COLS.map(c => {
+  const cols = getCols();
+  tbody.innerHTML = visible.map(r => '<tr>' + cols.map(c => {
     const v = r[c.key] ?? '';
     let cell;
     if (c.key === '_actions') {
@@ -1168,119 +1267,393 @@ function renderTable() {
     } else {
       cell = escHtml(v);
     }
-    return '<td' + (c.wrap ? ' class="wrap"' : '') + ' title="' + escHtml(v) + '">' + cell + '</td>';
+    return '<td data-key="' + escHtml(c.key) + '"' + (c.wrap ? ' class="wrap"' : '') + ' title="' + escHtml(v) + '" style="width:' + escHtml(c.width) + ';max-width:' + escHtml(c.width) + '">' + cell + '</td>';
   }).join('') + '</tr>').join('');
 
-  // sync scrollbar widths
-  const tableWrap    = document.getElementById('tableWrap');
-  const bottomInner  = document.getElementById('bottomScrollInner');
+  syncTableHorizontalScrollWidth();
+  applyStickyColumnOffsets();
+}
+
+function syncTableHorizontalScrollWidth() {
+  const tableWrap = document.getElementById('tableWrap');
+  const bottomInner = document.getElementById('bottomScrollInner');
   if (tableWrap && bottomInner) {
-    bottomInner.style.width = tableWrap.scrollWidth + 'px';
+    bottomInner.style.width = Math.max(tableWrap.scrollWidth, tableWrap.clientWidth) + 'px';
   }
 }
 
+function applyStickyColumnOffsets() {
+  const wrap = document.getElementById('tableWrap');
+  if (!wrap) return;
+  const headerRow = wrap.querySelector('thead tr.header-row');
+  if (!headerRow) return;
+  wrap.querySelectorAll('thead th.col-sticky, tbody td.col-sticky').forEach(el => {
+    el.classList.remove('col-sticky');
+    el.style.left = '';
+  });
+  let left = 0;
+  headerRow.querySelectorAll('th[data-key]').forEach(th => {
+    const key = th.dataset.key;
+    const w = th.offsetWidth;
+    if (key === 'url' || key === 'title') {
+      th.classList.add('col-sticky');
+      th.style.left = left + 'px';
+      wrap.querySelectorAll('tbody td[data-key="' + key + '"]').forEach(td => {
+        td.classList.add('col-sticky');
+        td.style.left = left + 'px';
+      });
+    }
+    left += w;
+  });
+}
+
+function buildTableToolbarHTML() {
+  const templates = loadNamedTemplates();
+  const names = Object.keys(templates).sort();
+  const opts = ['<option value="">— Saved templates —</option>']
+    .concat(names.map(n => '<option value="' + escHtml(n) + '">' + escHtml(n) + '</option>'))
+    .join('');
+  const d = (layoutState && layoutState.diagrams) ? layoutState.diagrams : DEFAULT_DIAGRAM_OPTS;
+  const ck = (id, prop, label) =>
+    '<label class="dash-diag-chk"><input type="checkbox" id="' + id + '" data-diag="' + prop + '"' + (d[prop] ? ' checked' : '') + '/> ' + escHtml(label) + '</label>';
+  return '<div class="layout-tools">' +
+    '<label for="dashTemplateSelect">Template</label>' +
+    '<select id="dashTemplateSelect">' + opts + '</select>' +
+    '<button type="button" class="btn" id="dashSaveTemplate" title="Save column order, widths, and diagram visibility">Save as…</button>' +
+    '<button type="button" class="btn" id="dashDeleteTemplate" title="Delete selected template">Delete</button>' +
+    '<button type="button" class="btn" id="dashResetLayout" title="Restore default column order and widths">Reset columns</button>' +
+    '<span class="layout-tools-sep" aria-hidden="true"></span>' +
+    '<span class="layout-tools-diag">' +
+      ck('dashDiagOverview', 'overview', 'Overview') +
+      ck('dashDiagAdvanced', 'advanced', 'Analytics') +
+      ck('dashDiagPipeline', 'pipeline', 'Pipeline') +
+      ck('dashDiagGlossary', 'glossary', 'Glossary') +
+    '</span>' +
+    '</div>';
+}
+
 function buildTableHTML(rows) {
-  // unique values for select filters
+  const COLS = getCols();
   const opts = {};
   COLS.filter(c => c.type === 'select').forEach(c => {
     opts[c.key] = [...new Set(rows.map(r => r[c.key] || '').filter(Boolean))].sort();
   });
 
-  const headerCells = COLS.map(c =>
-    c.type === 'actions'
-      ? '<th style="min-width:' + (c.width||'auto') + '">' + c.label + '</th>'
-      : '<th class="sortable" data-key="' + c.key + '" style="min-width:' + (c.width||'auto') + '">'
-        + c.label + '<i class="sort-icon"></i></th>'
-  ).join('');
+  const headerCells = COLS.map(c => {
+    const w = 'width:' + c.width + ';min-width:' + c.width + ';max-width:' + c.width;
+    if (c.type === 'actions') {
+      return '<th class="th-col" data-key="' + c.key + '" style="' + w + '"><span class="col-drag" draggable="true" title="Drag to reorder">⠿</span>'
+        + escHtml(c.label)
+        + '<span class="col-resize" data-resize-key="' + c.key + '" title="Resize column"></span></th>';
+    }
+    return '<th class="sortable th-col" data-key="' + c.key + '" style="' + w + '">'
+      + '<span class="col-drag" draggable="true" title="Drag to reorder">⠿</span>'
+      + '<span class="th-label">' + escHtml(c.label) + '</span>'
+      + '<i class="sort-icon"></i>'
+      + '<span class="col-resize" data-resize-key="' + c.key + '" title="Resize column"></span>'
+      + '</th>';
+  }).join('');
 
   const filterCells = COLS.map(c => {
-    if (c.type === 'actions') return '<th></th>';
+    const w = 'style="width:' + c.width + ';min-width:' + c.width + '"';
+    if (c.type === 'actions') return '<th ' + w + '></th>';
     if (c.type === 'select') {
+      const cur = colFilters[c.key] || '';
       const options = ['<option value="">All</option>']
-        .concat(opts[c.key].map(v => '<option value="' + escHtml(v) + '">' + escHtml(v) + '</option>'))
+        .concat(opts[c.key].map(v => '<option value="' + escHtml(v) + '"' + (v === cur ? ' selected' : '') + '>' + escHtml(v) + '</option>'))
         .join('');
-      return '<th><select data-filter="' + c.key + '">' + options + '</select></th>';
+      return '<th ' + w + '><select data-filter="' + c.key + '">' + options + '</select></th>';
     }
-    return '<th><input type="text" placeholder="filter…" data-filter="' + c.key + '"/></th>';
+    return '<th ' + w + '><input type="text" placeholder="filter…" data-filter="' + c.key + '" value="' + escHtml(colFilters[c.key] || '') + '"/></th>';
   }).join('');
 
   return \`
-<div class="table-card">
+<div class="table-card" id="tableCard">
   <div class="table-toolbar">
     <h2>Raw data</h2>
     <input id="globalSearch" type="text" placeholder="Search all columns…"/>
     <span id="rowCount"></span>
     <button class="btn" id="clearFilters">Clear filters</button>
+    \${buildTableToolbarHTML()}
   </div>
-  <div class="table-wrap" id="tableWrap">
-    <table>
-      <thead>
-        <tr class="header-row">\${headerCells}</tr>
-        <tr class="filter-row">\${filterCells}</tr>
-      </thead>
-      <tbody id="tBody"></tbody>
-    </table>
+  <div class="table-scroll-outer">
+    <div class="table-wrap hide-h-scrollbar" id="tableWrap">
+      <table>
+        <thead>
+          <tr class="header-row">\${headerCells}</tr>
+          <tr class="filter-row">\${filterCells}</tr>
+        </thead>
+        <tbody id="tBody"></tbody>
+      </table>
+    </div>
+    <div class="bottom-scroll-wrap" id="bottomScroll"><div class="bottom-scroll-inner" id="bottomScrollInner"></div></div>
   </div>
-  <div class="bottom-scroll-wrap" id="bottomScroll"><div class="bottom-scroll-inner" id="bottomScrollInner"></div></div>
 </div>\`;
 }
 
+function reapplySortHeaderClass() {
+  document.querySelectorAll('thead tr.header-row th').forEach(h => h.classList.remove('asc', 'desc'));
+  if (!sortCol) return;
+  const th = document.querySelector('thead tr.header-row th.sortable[data-key="' + sortCol + '"]');
+  if (th) th.classList.add(sortDir);
+}
+
+function syncDiagramPanelsFromState() {
+  if (!layoutState) return;
+  const d = layoutState.diagrams;
+  const ov = document.getElementById('dashOverviewSection');
+  if (ov) ov.classList.toggle('dash-layout-hidden', !d.overview);
+  const adv = document.getElementById('dashAdvancedCharts');
+  if (adv) adv.classList.toggle('dash-layout-hidden', !d.advanced);
+  const pipe = document.getElementById('dashPipelineDiagram');
+  if (pipe) pipe.classList.toggle('dash-layout-hidden', !d.pipeline);
+  const gl = document.getElementById('dashGlossaryWrap');
+  if (gl) gl.classList.toggle('dash-layout-hidden', !d.glossary);
+}
+
+function refreshTableChrome() {
+  const gs = document.getElementById('globalSearch') ? document.getElementById('globalSearch').value : '';
+  globalQ = gs;
+  const card = document.getElementById('tableCard');
+  if (!card) return;
+  card.outerHTML = buildTableHTML(tableRows);
+  initTableEvents();
+  const g = document.getElementById('globalSearch');
+  if (g) g.value = gs;
+  renderTable();
+  reapplySortHeaderClass();
+}
+
+function reorderColumns(fromKey, toKey) {
+  if (!layoutState) layoutState = loadLayoutState();
+  const o = [...layoutState.columnOrder];
+  const fi = o.indexOf(fromKey);
+  const ti = o.indexOf(toKey);
+  if (fi < 0 || ti < 0 || fi === ti) return;
+  o.splice(fi, 1);
+  o.splice(ti, 0, fromKey);
+  layoutState.columnOrder = normColumnOrder(o);
+  saveLayoutState();
+  refreshTableChrome();
+}
+
+function setColumnWidthDom(key, px) {
+  document.querySelectorAll('thead th[data-key="' + key + '"], tbody td[data-key="' + key + '"]').forEach(el => {
+    el.style.width = px + 'px';
+    el.style.minWidth = px + 'px';
+    el.style.maxWidth = px + 'px';
+  });
+  syncTableHorizontalScrollWidth();
+  applyStickyColumnOffsets();
+}
+
+function persistColumnWidth(key, px) {
+  if (!layoutState) layoutState = loadLayoutState();
+  layoutState.columnWidths[key] = px;
+  saveLayoutState();
+}
+
 function initTableEvents() {
-  // sort
-  document.querySelectorAll('thead tr.header-row th.sortable').forEach(th => {
-    th.addEventListener('click', () => {
-      const key = th.dataset.key;
-      if (sortCol === key) {
-        sortDir = sortDir === 'asc' ? 'desc' : 'asc';
-      } else {
-        sortCol = key; sortDir = 'asc';
-      }
-      document.querySelectorAll('thead tr.header-row th').forEach(h => h.classList.remove('asc','desc'));
-      th.classList.add(sortDir);
-      page = 1;
-      renderTable();
-    });
-  });
+  const card = document.getElementById('tableCard');
+  if (!card) return;
 
-  // per-column filters
-  document.querySelectorAll('[data-filter]').forEach(el => {
-    el.addEventListener('input', () => {
-      colFilters[el.dataset.filter] = el.value;
-      page = 1;
-      renderTable();
-    });
-  });
-
-  // global search
-  document.getElementById('globalSearch').addEventListener('input', e => {
-    globalQ = e.target.value;
+  // sort (ignore clicks on drag / resize handles)
+  card.addEventListener('click', e => {
+    if (e.target.closest('.col-drag') || e.target.closest('.col-resize')) return;
+    const th = e.target.closest('thead tr.header-row th.sortable');
+    if (!th) return;
+    const key = th.dataset.key;
+    if (sortCol === key) sortDir = sortDir === 'asc' ? 'desc' : 'asc';
+    else { sortCol = key; sortDir = 'asc'; }
+    document.querySelectorAll('thead tr.header-row th').forEach(h => h.classList.remove('asc', 'desc'));
+    th.classList.add(sortDir);
     page = 1;
     renderTable();
   });
 
-  // clear
-  document.getElementById('clearFilters').addEventListener('click', () => {
+  // per-column filters + global search + clear
+  card.addEventListener('input', e => {
+    const t = e.target;
+    if (t.id === 'globalSearch') {
+      globalQ = t.value;
+      page = 1;
+      renderTable();
+      return;
+    }
+    if (t.dataset.filter && t.tagName !== 'SELECT') {
+      colFilters[t.dataset.filter] = t.value;
+      page = 1;
+      renderTable();
+    }
+  });
+
+  card.addEventListener('change', e => {
+    const t = e.target;
+    if (t.dataset.filter && t.tagName === 'SELECT') {
+      colFilters[t.dataset.filter] = t.value;
+      page = 1;
+      renderTable();
+    }
+  });
+
+  const clearBtn = document.getElementById('clearFilters');
+  if (clearBtn) clearBtn.addEventListener('click', () => {
     globalQ = ''; sortCol = null; colFilters = {};
-    document.getElementById('globalSearch').value = '';
-    document.querySelectorAll('[data-filter]').forEach(el => { el.value = ''; });
-    document.querySelectorAll('thead tr.header-row th').forEach(h => h.classList.remove('asc','desc'));
+    const gs = document.getElementById('globalSearch');
+    if (gs) gs.value = '';
+    card.querySelectorAll('[data-filter]').forEach(el => { el.value = ''; });
+    document.querySelectorAll('thead tr.header-row th').forEach(h => h.classList.remove('asc', 'desc'));
     renderTable();
   });
 
-  // sync table ↔ bottom scrollbar
-  const tableWrap    = document.getElementById('tableWrap');
+  // sync table ↔ bottom scrollbar (single horizontal track; native H-bar hidden on #tableWrap)
+  const tableWrap = document.getElementById('tableWrap');
   const bottomScroll = document.getElementById('bottomScroll');
-  let syncing = false;
-  function syncFrom(source) {
-    if (syncing) return;
-    syncing = true;
-    const x = source.scrollLeft;
-    if (tableWrap    !== source) tableWrap.scrollLeft    = x;
-    if (bottomScroll !== source) bottomScroll.scrollLeft = x;
-    syncing = false;
+  if (tableWrap && bottomScroll) {
+    let syncing = false;
+    function syncFrom(source) {
+      if (syncing) return;
+      syncing = true;
+      const x = source.scrollLeft;
+      if (tableWrap !== source) tableWrap.scrollLeft = x;
+      if (bottomScroll !== source) bottomScroll.scrollLeft = x;
+      syncing = false;
+    }
+    tableWrap.addEventListener('scroll', () => syncFrom(tableWrap));
+    bottomScroll.addEventListener('scroll', () => syncFrom(bottomScroll));
   }
-  tableWrap.addEventListener('scroll',    () => syncFrom(tableWrap));
-  bottomScroll.addEventListener('scroll', () => syncFrom(bottomScroll));
+
+  // column drag reorder
+  let dragColKey = null;
+  card.addEventListener('dragstart', e => {
+    const h = e.target.closest('.col-drag');
+    if (!h) return;
+    const th = h.closest('th');
+    dragColKey = th ? th.dataset.key : null;
+    if (dragColKey) e.dataTransfer.setData('text/plain', dragColKey);
+    e.dataTransfer.effectAllowed = 'move';
+  });
+  card.addEventListener('dragover', e => {
+    const th = e.target.closest('th.th-col');
+    if (!th || !dragColKey) return;
+    e.preventDefault();
+  });
+  card.addEventListener('drop', e => {
+    const th = e.target.closest('th.th-col');
+    if (!th || !dragColKey) return;
+    e.preventDefault();
+    const toKey = th.dataset.key;
+    if (toKey && dragColKey !== toKey) reorderColumns(dragColKey, toKey);
+    dragColKey = null;
+  });
+
+  // column resize
+  card.addEventListener('mousedown', e => {
+    const handle = e.target.closest('.col-resize');
+    if (!handle) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const key = handle.dataset.resizeKey;
+    const th = handle.closest('th');
+    if (!key || !th) return;
+    const startX = e.clientX;
+    const startW = th.getBoundingClientRect().width;
+    document.body.classList.add('col-resizing');
+    function move(ev) {
+      const dx = ev.clientX - startX;
+      const nw = Math.round(Math.max(40, startW + dx));
+      setColumnWidthDom(key, nw);
+    }
+    function up(ev) {
+      const dx = ev.clientX - startX;
+      const nw = Math.round(Math.max(40, startW + dx));
+      persistColumnWidth(key, nw);
+      document.body.classList.remove('col-resizing');
+      document.removeEventListener('mousemove', move);
+      document.removeEventListener('mouseup', up);
+    }
+    document.addEventListener('mousemove', move);
+    document.addEventListener('mouseup', up);
+  });
+
+  // templates + diagram toggles
+  const tmplSel = document.getElementById('dashTemplateSelect');
+  if (tmplSel) tmplSel.addEventListener('change', () => {
+    const name = tmplSel.value;
+    if (!name) return;
+    const t = loadNamedTemplates()[name];
+    if (!t) return;
+    layoutState = {
+      columnOrder: normColumnOrder(t.columnOrder || []),
+      columnWidths: { ...(t.columnWidths || {}) },
+      diagrams: { ...DEFAULT_DIAGRAM_OPTS, ...(t.diagrams || {}) },
+    };
+    saveLayoutState();
+    if (lastDashboardData) render(lastDashboardData);
+    tmplSel.value = '';
+  });
+
+  const saveTmpl = document.getElementById('dashSaveTemplate');
+  if (saveTmpl) saveTmpl.addEventListener('click', () => {
+    if (!layoutState) layoutState = loadLayoutState();
+    const name = prompt('Save layout as template named:');
+    if (!name || !String(name).trim()) return;
+    const key = String(name).trim();
+    const all = loadNamedTemplates();
+    all[key] = {
+      columnOrder: [...layoutState.columnOrder],
+      columnWidths: { ...layoutState.columnWidths },
+      diagrams: { ...layoutState.diagrams },
+    };
+    saveNamedTemplates(all);
+    const sel = document.getElementById('dashTemplateSelect');
+    if (sel && !Array.from(sel.options).some(o => o.value === key)) {
+      const opt = document.createElement('option');
+      opt.value = key;
+      opt.textContent = key;
+      sel.appendChild(opt);
+    }
+  });
+
+  const delTmpl = document.getElementById('dashDeleteTemplate');
+  if (delTmpl) delTmpl.addEventListener('click', () => {
+    const sel = document.getElementById('dashTemplateSelect');
+    const name = sel && sel.value ? sel.value : '';
+    if (!name) { alert('Select a template first'); return; }
+    if (!confirm('Delete template "' + name + '"?')) return;
+    const all = loadNamedTemplates();
+    delete all[name];
+    saveNamedTemplates(all);
+    if (lastDashboardData) render(lastDashboardData);
+  });
+
+  const resetL = document.getElementById('dashResetLayout');
+  if (resetL) resetL.addEventListener('click', () => {
+    layoutState = {
+      columnOrder: [...DEFAULT_COLUMN_ORDER],
+      columnWidths: {},
+      diagrams: { ...DEFAULT_DIAGRAM_OPTS },
+    };
+    saveLayoutState();
+    if (lastDashboardData) render(lastDashboardData);
+  });
+
+  document.querySelectorAll('[data-diag]').forEach(cb => {
+    cb.addEventListener('change', () => {
+      if (!layoutState) layoutState = loadLayoutState();
+      layoutState.diagrams[cb.dataset.diag] = cb.checked;
+      saveLayoutState();
+      syncDiagramPanelsFromState();
+    });
+  });
+
+  if (!window.__dashTableWinResize) {
+    window.__dashTableWinResize = true;
+    window.addEventListener('resize', () => {
+      syncTableHorizontalScrollWidth();
+      applyStickyColumnOffsets();
+    });
+  }
 
   // ── Action buttons (Applied / Not relevant) ─────────────────────────────
   document.getElementById('tBody').addEventListener('click', async e => {
@@ -1338,6 +1711,8 @@ function initTableEvents() {
 // ── Render full page ──────────────────────────────────────────────────────────
 function render(data) {
   destroyCharts();
+  layoutState = loadLayoutState();
+  lastDashboardData = data;
   tableRows = data.rows || [];
   sortCol = null; sortDir = 'asc'; colFilters = {}; globalQ = ''; page = 1;
   crossFilters = {};
@@ -1360,7 +1735,7 @@ function render(data) {
 
     <div id="filterBar" class="filter-bar empty"></div>
 
-    <section class="section open" data-section="overview">
+    <section class="section open \${layoutState.diagrams.overview ? '' : 'dash-layout-hidden'}" data-section="overview" id="dashOverviewSection">
       <div class="section-header">
         <span class="chev">▶</span>
         <h2>Overview</h2>
@@ -1386,7 +1761,7 @@ function render(data) {
         <span class="section-meta">source quality, sequence, SPC, schedule and pipeline docs</span>
       </div>
       <div class="section-body">
-        <div class="charts-grid">
+        <div class="charts-grid \${layoutState.diagrams.advanced ? '' : 'dash-layout-hidden'}" id="dashAdvancedCharts">
           <div class="card" data-filter-key="source">\${cardTitle('Source quality funnel', 'sourceQuality')}<div class="chart-wrap tall"><canvas id="cSourceQuality"></canvas></div></div>
           <div class="card" data-filter-key="source">\${cardTitle('Source reliability snapshot', 'reliability')}<div class="chart-wrap"><canvas id="cReliability"></canvas></div></div>
           <div class="card" data-filter-key="search_name">\${cardTitle('Search effectiveness heatmap', 'searchHeatmap')}<div class="chart-wrap xtall"><canvas id="cSearchHeat"></canvas></div></div>
@@ -1397,7 +1772,7 @@ function render(data) {
           <div class="card">\${cardTitle('Schedule heatmap', 'schedule')}<div class="chart-wrap xtall"><canvas id="cSchedule"></canvas></div></div>
           <div class="card" data-filter-key="outcome">\${cardTitle('Relevance vs outcome scatter', 'scatter')}<div class="chart-wrap"><canvas id="cScatter"></canvas></div></div>
         </div>
-        <div class="diagram-card" style="margin-top:.85rem">
+        <div class="diagram-card \${layoutState.diagrams.pipeline ? '' : 'dash-layout-hidden'}" style="margin-top:.85rem" id="dashPipelineDiagram">
           <div class="diagram-header">
             <span class="diagram-title">Pipeline + data model (selected csv)</span>
             <span class="scope-badge">Scope: \${escHtml(selectedFile)}</span>
@@ -1423,7 +1798,7 @@ function render(data) {
             </div>
           </div>
         </div>
-        \${renderHelpGlossary()}
+        <div id="dashGlossaryWrap" class="\${layoutState.diagrams.glossary ? '' : 'dash-layout-hidden'}">\${renderHelpGlossary()}</div>
       </div>
     </section>
 
