@@ -10,6 +10,7 @@ import { fileURLToPath } from 'url';
 import { spawn } from 'child_process';
 import Database from 'better-sqlite3';
 import { appConfig } from './config.js';
+import { ensureJobsSchema } from './jobs-schema.js';
 
 // Open a dedicated read-only connection. The writer schema lives in src/db.js;
 // importing it here would open a second writer on the same SQLite file, which
@@ -22,13 +23,25 @@ let writeDb = null;
 function getWriteDb() {
   if (!writeDb) {
     writeDb = new Database(appConfig.dbPath, { readonly: false, fileMustExist: true });
-    const existing = new Set(writeDb.prepare('PRAGMA table_info(jobs)').all().map(r => r.name));
-    if (!existing.has('applied'))   writeDb.exec('ALTER TABLE jobs ADD COLUMN applied INTEGER DEFAULT 0');
-    if (!existing.has('discarded')) writeDb.exec('ALTER TABLE jobs ADD COLUMN discarded INTEGER DEFAULT 0');
+    ensureJobsSchema(writeDb);
   }
   return writeDb;
 }
+
+let dashboardJobsMigrated = false;
+function ensureDashboardJobsMigrated() {
+  if (dashboardJobsMigrated) return;
+  const db = new Database(appConfig.dbPath, { readonly: false, fileMustExist: true });
+  try {
+    ensureJobsSchema(db);
+  } finally {
+    db.close();
+  }
+  dashboardJobsMigrated = true;
+}
+
 function getAllJobsForDashboard() {
+  ensureDashboardJobsMigrated();
   if (!readonlyDb) {
     readonlyDb = new Database(appConfig.dbPath, { readonly: true, fileMustExist: true });
     readonlyStmt = readonlyDb.prepare(`
@@ -48,6 +61,7 @@ function getAllJobsForDashboard() {
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const RUNS_DIR = path.join(__dirname, '..', 'logs', 'runs');
+const CHART_BUNDLE = path.join(__dirname, '..', 'node_modules', 'chart.js', 'dist', 'chart.umd.min.js');
 const ALL_JOBS_ID = '__all__.csv';
 
 const portArg = process.argv.indexOf('--port');
@@ -495,7 +509,7 @@ const HTML = /* html */`<!DOCTYPE html>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>Job Alert Bot — Run Dashboard</title>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<script src="${BASE_PATH}/vendor/chart.umd.min.js"></script>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 html{scroll-behavior:smooth;overflow-x:hidden;overflow-y:scroll}html,body{min-height:100vh}
@@ -1857,6 +1871,20 @@ const server = http.createServer((req, res) => {
     ? url.pathname.slice(BASE_PATH.length) || '/'
     : url.pathname;
 
+  if (pathname === '/vendor/chart.umd.min.js') {
+    if (!fs.existsSync(CHART_BUNDLE)) {
+      res.writeHead(503, { 'Content-Type': 'text/plain; charset=utf-8' });
+      res.end('Chart.js bundle missing (npm install chart.js).');
+      return;
+    }
+    res.writeHead(200, {
+      'Content-Type': 'application/javascript; charset=utf-8',
+      'Cache-Control': 'public, max-age=86400',
+    });
+    fs.createReadStream(CHART_BUNDLE).pipe(res);
+    return;
+  }
+
   if (pathname === '/api/files') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify(listCsvFiles()));
@@ -1963,7 +1991,7 @@ const server = http.createServer((req, res) => {
     const series = [];
     for (const f of files) {
       try {
-        const data = getAggregate(path.join(RUNS_DIR, f), f);
+        const data = f === ALL_JOBS_ID ? getAllJobsAggregate() : getAggregate(path.join(RUNS_DIR, f), f);
         const fetched = data.total || 0;
         series.push({
           file: f,
