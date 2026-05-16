@@ -21,6 +21,20 @@ const REQUIRED_KEYWORDS = [
   'point cloud',
   'aec',
   'infrastructure digital',
+  // Italian BIM/AEC terminology
+  'modellazione informativa',
+  'gestione informativa',
+  'coordinatore bim',
+  'responsabile bim',
+  'manager bim',
+  'specialista bim',
+  'uni 11337',
+  'capitolato informativo',
+  'ambiente di condivisione dati',
+  'acdat',
+  'digitalizzazione costruzioni',
+  'digitalizzazione delle costruzioni',
+  'gemello digitale',
 ];
 
 const EXCLUDE_TITLE_KEYWORDS = [
@@ -69,6 +83,28 @@ const EXCLUDE_TITLE_KEYWORDS = [
   'doctor',
   'gp ',
   'veterinary',
+  // Italian noise terms (non-BIM/AEC roles common on Italian boards)
+  'infermiere',
+  'infermiera',
+  'insegnante',
+  'docente',
+  'avvocato',
+  'commercialista',
+  'consulente assicurativo',
+  'addetto vendite',
+  'addetto alle vendite',
+  'cameriere',
+  'cuoco',
+  'magazziniere',
+  'autista',
+  'farmacista',
+  'medico',
+  'estetista',
+  'parrucchiere',
+  'badante',
+  'baby sitter',
+  'babysitter',
+  'colf',
 ];
 
 export function isRelevantJob(title, description) {

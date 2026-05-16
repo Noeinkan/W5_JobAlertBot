@@ -8,7 +8,7 @@ import {
   Routes,
   SlashCommandBuilder,
 } from 'discord.js';
-import { env, getSourceLabel } from './config.js';
+import { appConfig, env, getSourceLabel } from './config.js';
 
 function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -123,6 +123,7 @@ function getPostedText(postedAt) {
 
 const RAG_COLOR = { Green: 0x2ecc71, Amber: 0xf39c12, Red: 0xe74c3c };
 const RAG_ICON = { Green: '🟢', Amber: '🟡', Red: '🔴' };
+const COUNTRY_FLAG = { uk: '🇬🇧', it: '🇮🇹' };
 
 export function buildJobEmbed(job) {
   const useProfile =
@@ -131,7 +132,8 @@ export function buildJobEmbed(job) {
   const color = RAG_COLOR[displayRating] ?? 0xf39c12;
   const icon = RAG_ICON[displayRating] ?? '🟡';
   const contractLabel = job.isContract ? ' · CONTRACT' : '';
-  const banner = `${displayRating.toUpperCase()} MATCH${contractLabel}`;
+  const flag = COUNTRY_FLAG[job.country] ?? '';
+  const banner = `${flag ? `${flag} ` : ''}${displayRating.toUpperCase()} MATCH${contractLabel}`;
   const tags = job.tags?.length > 0
     ? job.tags.map((tag) => `#${tag}`).join(' ')
     : `#${job.searchId} ${job.isContract ? '#contract' : '#permanent'}`;
@@ -260,7 +262,7 @@ export function buildDailySummaryMessage({ jobsToday, totalJobs, enabledSources,
     day: 'numeric',
     month: 'long',
     year: 'numeric',
-    timeZone: 'Europe/London',
+    timeZone: appConfig.timezone,
   });
   const dateStr = formatter.format(new Date());
 

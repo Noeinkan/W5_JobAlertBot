@@ -158,6 +158,8 @@ export function aggregate(rows) {
   const bySearch  = {};
   const byRag     = {};
   const byProfile = {};
+  const byCountry = {};
+  const countrySourceMatrix = {};
   const salaryVals = [];
 
   const contractRates = { day: [], hour: [] };
@@ -169,6 +171,10 @@ export function aggregate(rows) {
     bySearch[label]      = (bySearch[label]      || 0) + 1;
     if (r.rag_rating)    byRag[r.rag_rating]     = (byRag[r.rag_rating] || 0) + 1;
     if (r.profile_rating) byProfile[r.profile_rating] = (byProfile[r.profile_rating] || 0) + 1;
+    const country = r.country || 'unknown';
+    byCountry[country] = (byCountry[country] || 0) + 1;
+    countrySourceMatrix[country] ||= {};
+    countrySourceMatrix[country][r.source] = (countrySourceMatrix[country][r.source] || 0) + 1;
     if (r.salary_min && Number(r.salary_min) > 0) salaryVals.push(Number(r.salary_min));
 
     const rate = detectRate(r);
@@ -212,7 +218,8 @@ export function aggregate(rows) {
     permCount:     byContract.Perm,
     runAt:       rows[0]?.run_at  ?? '',
     trigger:     rows[0]?.trigger ?? '',
-    byOutcome, bySource, bySearch, byRag, byProfile, salaryBuckets, byContract,
+    byOutcome, bySource, bySearch, byRag, byProfile, byCountry, countrySourceMatrix,
+    salaryBuckets, byContract,
     contractRates,
     analytics: deriveAnalytics(rows, byOutcome),
     rows,
@@ -287,21 +294,31 @@ function deriveAnalytics(rows, byOutcome) {
 
   const sourceMap = {};
   const searchMap = {};
+  const countryMap = {};
   const ragScatter = [];
   const schedule = Array.from({ length: 7 }, () => Array(24).fill(0));
   rows.forEach((r, idx) => {
     const source = r.source || 'unknown';
     const search = r.search_name || r.search_id || 'unknown';
+    const country = r.country || 'unknown';
     sourceMap[source] ||= { fetched: 0, notified: 0, errors: 0 };
     searchMap[search] ||= { total: 0, notified: 0, filtered: 0, byOutcome: {} };
+    countryMap[country] ||= { fetched: 0, notified: 0, filtered: 0, applied: 0, discarded: 0 };
     sourceMap[source].fetched++;
     searchMap[search].total++;
+    countryMap[country].fetched++;
     searchMap[search].byOutcome[r.outcome || 'unknown'] = (searchMap[search].byOutcome[r.outcome || 'unknown'] || 0) + 1;
     if (r.outcome === 'new') {
       sourceMap[source].notified++;
       searchMap[search].notified++;
+      countryMap[country].notified++;
     }
-    if ((r.outcome || '').startsWith('filtered_')) searchMap[search].filtered++;
+    if ((r.outcome || '').startsWith('filtered_')) {
+      searchMap[search].filtered++;
+      countryMap[country].filtered++;
+    }
+    if (r.outcome === 'applied') countryMap[country].applied++;
+    if (r.outcome === 'discarded') countryMap[country].discarded++;
     if (r.outcome === 'error') sourceMap[source].errors++;
     const rag = Number(r.rag_score);
     if (!Number.isNaN(rag)) ragScatter.push({ x: idx + 1, y: rag, outcome: r.outcome || 'unknown' });
@@ -329,6 +346,18 @@ function deriveAnalytics(rows, byOutcome) {
     byOutcome: v.byOutcome,
   })).sort((a, b) => b.total - a.total);
 
+  const countryBreakdown = Object.entries(countryMap).map(([country, v]) => ({
+    country,
+    fetched: v.fetched,
+    notified: v.notified,
+    filtered: v.filtered,
+    applied: v.applied,
+    discarded: v.discarded,
+    notifyRate: Math.round((v.notified / Math.max(1, v.fetched)) * 1000) / 10,
+    filterRate: Math.round((v.filtered / Math.max(1, v.fetched)) * 1000) / 10,
+    applyRate: Math.round((v.applied / Math.max(1, v.fetched)) * 1000) / 10,
+  })).sort((a, b) => b.fetched - a.fetched);
+
   const sequence = buildSequenceBuckets(rows, Math.min(12, Math.max(6, Math.ceil(rows.length / 12) || 6)));
   const seqMetrics = sequence.buckets.map(bucket => {
     const fetched = bucket.length;
@@ -347,6 +376,7 @@ function deriveAnalytics(rows, byOutcome) {
     pareto,
     sourceQuality,
     searchEffectiveness,
+    countryBreakdown,
     schedule,
     ragScatter,
     sequence: {

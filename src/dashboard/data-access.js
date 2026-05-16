@@ -53,7 +53,7 @@ export function getAllJobsForDashboard() {
   if (!readonlyStmt) {
     readonlyStmt = db.prepare(`
       SELECT
-        found_at, source, search_id, title, company, location,
+        found_at, source, search_id, title, company, location, country,
         salary_text, salary_min, salary_max, is_contract, url, posted_at,
         notified, filter_reason, rag_rating, rag_score, rag_reason,
         profile_rating, profile_score, profile_reason, profile_matches,
@@ -181,6 +181,7 @@ export function rowFromDbJob(job) {
     title: job.title ?? '',
     company: job.company ?? '',
     location: job.location ?? '',
+    country: job.country ?? '',
     salary_text: job.salary_text ?? '',
     salary_min: job.salary_min ?? '',
     salary_max: job.salary_max ?? '',

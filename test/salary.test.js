@@ -115,3 +115,33 @@ test('passesMinimumSalary keeps listings with no salary data', () => {
     true
   );
 });
+
+test('buildSalaryInfo parses Italian RAL format with dot thousands', () => {
+  const salary = buildSalaryInfo({
+    title: 'BIM Manager',
+    description: 'RAL 50.000€ lordi annui',
+    country: 'it',
+  });
+  assert.equal(salary.salaryMin, 50000);
+  assert.equal(salary.currency, 'EUR');
+});
+
+test('buildSalaryInfo parses Italian range "da X a Y"', () => {
+  const salary = buildSalaryInfo({
+    title: 'Coordinatore BIM',
+    description: 'RAL da 45.000€ a 60.000€ annui',
+    country: 'it',
+  });
+  assert.equal(salary.salaryMin, 45000);
+  assert.equal(salary.salaryMax, 60000);
+  assert.equal(salary.currency, 'EUR');
+});
+
+test('buildSalaryInfo detects partita IVA as contract', () => {
+  const salary = buildSalaryInfo({
+    title: 'BIM Specialist',
+    description: 'Collaborazione in partita IVA, 350€ al giorno',
+    country: 'it',
+  });
+  assert.equal(salary.isContract, true);
+});

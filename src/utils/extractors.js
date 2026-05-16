@@ -153,9 +153,9 @@ function detectBenefits(text) {
   return result;
 }
 
-export function extractJobSignals({ title = '', description = '', salaryTextHint = '' } = {}) {
+export function extractJobSignals({ title = '', description = '', salaryTextHint = '', country = null } = {}) {
   const combined = [title, description, salaryTextHint].filter(Boolean).join(' | ');
-  const salary = buildSalaryInfo({ title, description, extensions: [salaryTextHint].filter(Boolean) });
+  const salary = buildSalaryInfo({ title, description, extensions: [salaryTextHint].filter(Boolean), country });
   const benefits = detectBenefits(combined);
 
   return {

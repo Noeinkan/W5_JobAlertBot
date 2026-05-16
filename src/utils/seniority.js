@@ -16,6 +16,15 @@ const JUNIOR_TITLE_KEYWORDS = [
   'bim technician',
   'bim coordinator',
   'document controller',
+  // Italian
+  'stagista',
+  'tirocinante',
+  'apprendista',
+  'neolaureato',
+  'neo laureato',
+  'neo-laureato',
+  'assistente ',
+  'addetto ',
 ];
 
 const SENIOR_TITLE_KEYWORDS = [
@@ -36,6 +45,15 @@ const SENIOR_TITLE_KEYWORDS = [
   'program manager',
   'solution architect',
   'technical director',
+  // Italian
+  'responsabile',
+  'direttore',
+  'dirigente',
+  'capo ',
+  'capo-',
+  'capo progetto',
+  'project manager senior',
+  'senior responsabile',
 ];
 
 const SENIOR_DESCRIPTION_INDICATORS = [
@@ -61,7 +79,32 @@ const SENIOR_DESCRIPTION_INDICATORS = [
   '£100k',
   '£110,000',
   '£120,000',
+  // Italian
+  '10+ anni',
+  '10 anni di esperienza',
+  '8+ anni',
+  'livello direttivo',
+  'livello dirigenziale',
+  'responsabilità di budget',
+  'gestione del team',
+  'leadership senior',
+  '€50.000',
+  '€50,000',
+  '€60.000',
+  '€70.000',
+  '€80.000',
+  '€90.000',
+  '€100.000',
+  'ral 50',
+  'ral 60',
+  'ral 70',
+  'ral 80',
 ];
+
+const SENIORITY_THRESHOLDS = {
+  uk: { contractDayRate: 450, annualSalary: 90000, currencySymbol: '£' },
+  it: { contractDayRate: 350, annualSalary: 50000, currencySymbol: '€' },
+};
 
 /**
  * Checks whether a job meets the seniority threshold.
@@ -70,6 +113,8 @@ const SENIOR_DESCRIPTION_INDICATORS = [
 export function isSeniorEnough(job) {
   const title = String(job.title ?? '').toLowerCase();
   const description = String(job.description ?? '').toLowerCase();
+  const country = job.country ?? 'uk';
+  const thresholds = SENIORITY_THRESHOLDS[country] ?? SENIORITY_THRESHOLDS.uk;
 
   // Step 1: Block junior titles immediately
   if (JUNIOR_TITLE_KEYWORDS.some((kw) => title.includes(kw))) {
@@ -77,12 +122,12 @@ export function isSeniorEnough(job) {
   }
 
   // Step 2: Pass if salary meets threshold
-  if (job.isContract && Number.isFinite(job.salaryMin) && job.salaryMin >= 450) {
-    return { passes: true, reason: 'day rate \u2265 \u00a3450' };
+  if (job.isContract && Number.isFinite(job.salaryMin) && job.salaryMin >= thresholds.contractDayRate) {
+    return { passes: true, reason: `day rate ≥ ${thresholds.currencySymbol}${thresholds.contractDayRate}` };
   }
 
-  if (!job.isContract && Number.isFinite(job.salaryMin) && job.salaryMin >= 90000) {
-    return { passes: true, reason: 'salary \u2265 \u00a390k' };
+  if (!job.isContract && Number.isFinite(job.salaryMin) && job.salaryMin >= thresholds.annualSalary) {
+    return { passes: true, reason: `salary ≥ ${thresholds.currencySymbol}${Math.round(thresholds.annualSalary / 1000)}k` };
   }
 
   // Step 3: Pass if title indicates seniority

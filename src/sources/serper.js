@@ -10,7 +10,23 @@ const cache = new Map();
 const baseUrl = 'https://google.serper.dev/search';
 
 function getCacheKey(search) {
-  return `${search.keywords}::${search.location}`;
+  return `${search.country ?? 'uk'}::${search.keywords}::${search.location}`;
+}
+
+function serperGeoParams(search) {
+  const country = search.country ?? 'uk';
+  if (country === 'it') {
+    return {
+      location: search.source_options?.serper?.location ?? `${search.location}, Italy`,
+      gl: search.source_options?.serper?.gl ?? 'it',
+      hl: search.source_options?.serper?.hl ?? 'it',
+    };
+  }
+  return {
+    location: search.source_options?.serper?.location ?? `${search.location}, UK`,
+    gl: search.source_options?.serper?.gl ?? 'uk',
+    hl: search.source_options?.serper?.hl ?? 'en',
+  };
 }
 
 export const serperSource = {
@@ -34,16 +50,19 @@ export const serperSource = {
     const mergedByLink = new Map();
     let apiRows = 0;
 
+    const geo = serperGeoParams(search);
+    const jobsTerm = search.country === 'it' ? 'lavoro' : 'jobs';
+
     for (let page = 1; apiRows < maxRaw && page <= 40; page++) {
       const response = await withRetry(
         () =>
           axios.post(
             baseUrl,
             {
-              q: `${search.query} jobs`,
-              location: search.source_options?.serper?.location ?? `${search.location}, UK`,
-              gl: search.source_options?.serper?.gl ?? 'uk',
-              hl: 'en',
+              q: `${search.query} ${jobsTerm}`,
+              location: geo.location,
+              gl: geo.gl,
+              hl: geo.hl,
               page,
             },
             {
@@ -91,6 +110,7 @@ export const serperSource = {
         title,
         description: [item.description, item.via].filter(Boolean).join(' '),
         extensions: item.extensions ?? [],
+        country: search.country,
       });
 
       jobs.push({

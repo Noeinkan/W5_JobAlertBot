@@ -44,8 +44,10 @@ export const adzunaSource = {
     const jobs = [];
     let fetched = 0;
 
+    const countryCode = search.country === 'it' ? 'it' : 'gb';
+
     for (let page = 1; fetched < maxRaw; page++) {
-      const url = `https://api.adzuna.com/v1/api/jobs/gb/search/${page}`;
+      const url = `https://api.adzuna.com/v1/api/jobs/${countryCode}/search/${page}`;
       const response = await withRetry(
         () =>
           axios.get(url, {
@@ -75,6 +77,7 @@ export const adzunaSource = {
           description,
           salaryMin: item.salary_min,
           salaryMax: item.salary_max,
+          country: search.country,
         });
 
         jobs.push({

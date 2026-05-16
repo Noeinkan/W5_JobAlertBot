@@ -31,6 +31,7 @@ export const JOB_COLUMN_ADDITIONS = [
   ['applied', 'INTEGER'],
   ['discarded', 'INTEGER'],
   ['expired', 'INTEGER'],
+  ['country', 'TEXT'],
 ];
 
 export function ensureJobsSchema(db) {
@@ -77,4 +78,7 @@ export function ensureJobsSchema(db) {
       db.exec(`ALTER TABLE jobs ADD COLUMN ${name} ${type}`);
     }
   }
+
+  // Backfill: rows that existed before the country column was added are UK.
+  db.exec("UPDATE jobs SET country = 'uk' WHERE country IS NULL");
 }

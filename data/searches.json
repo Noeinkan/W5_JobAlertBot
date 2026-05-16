@@ -1,5 +1,6 @@
 {
   "defaults": {
+    "country": "uk",
     "location": "London",
     "distance_from_location": 30,
     "allowed_sources": ["adzuna", "reed", "serper", "linkedin", "jooble", "careerjet", "guardian", "jobserve", "construction_enquirer", "cvlibrary", "risetechnical", "ciob", "bimplus", "technojobs", "totaljobs", "cwjobs", "hays", "michaelpage", "monster", "glassdoor"],
@@ -164,6 +165,65 @@
       "location": "United Kingdom",
       "distance_from_location": 150,
       "allowed_sources": ["serper"]
+    },
+    {
+      "id": "bim_manager_it",
+      "name": "BIM Manager / Responsabile BIM (Italia)",
+      "country": "it",
+      "keywords": "BIM Manager OR Responsabile BIM OR Manager BIM",
+      "location": "Milano",
+      "min_salary": 45000,
+      "allowed_sources": ["adzuna", "linkedin", "jooble", "serper"]
+    },
+    {
+      "id": "coordinatore_bim_senior_it",
+      "name": "Coordinatore BIM Senior (Italia)",
+      "country": "it",
+      "keywords": "Senior BIM Coordinator OR Coordinatore BIM Senior OR Specialista BIM",
+      "location": "Italia",
+      "distance_from_location": 200,
+      "min_salary": 40000,
+      "allowed_sources": ["linkedin", "jooble", "serper", "adzuna"]
+    },
+    {
+      "id": "digital_construction_it",
+      "name": "Digital Construction (Italia)",
+      "country": "it",
+      "keywords": "Digital Construction OR Digitalizzazione costruzioni OR Digital Engineering",
+      "location": "Italia",
+      "distance_from_location": 200,
+      "min_salary": 50000,
+      "allowed_sources": ["linkedin", "jooble", "serper", "adzuna"]
+    },
+    {
+      "id": "information_management_it",
+      "name": "Gestione Informativa / UNI 11337 (Italia)",
+      "country": "it",
+      "keywords": "Information Manager OR Gestione Informativa OR UNI 11337 OR Capitolato Informativo",
+      "location": "Italia",
+      "distance_from_location": 200,
+      "min_salary": 45000,
+      "allowed_sources": ["linkedin", "jooble", "serper", "adzuna"]
+    },
+    {
+      "id": "digital_twin_it",
+      "name": "Digital Twin / Gemello Digitale (Italia)",
+      "country": "it",
+      "keywords": "Digital Twin OR Gemello Digitale OR Modellazione Informativa",
+      "location": "Italia",
+      "distance_from_location": 200,
+      "min_salary": 45000,
+      "allowed_sources": ["linkedin", "jooble", "serper", "adzuna"]
+    },
+    {
+      "id": "head_of_bim_it",
+      "name": "Head of BIM / Direttore Digitale (Italia)",
+      "country": "it",
+      "keywords": "Head of BIM OR Direttore BIM OR BIM Director OR Digital Director",
+      "location": "Italia",
+      "distance_from_location": 200,
+      "min_salary": 70000,
+      "allowed_sources": ["linkedin", "jooble", "serper", "adzuna"]
     }
   ]
 }

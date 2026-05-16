@@ -56,7 +56,7 @@ export const joobleSource = {
           continue;
         }
 
-        const salaryInfo = buildSalaryInfo({ title, description });
+        const salaryInfo = buildSalaryInfo({ title, description, country: search.country });
 
         jobs.push({
           externalId: item.link ?? `${title}-${item.company}`,

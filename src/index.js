@@ -105,18 +105,18 @@ function getNextRunText() {
   const nextHour = appConfig.scheduleHours.find((hour) => hour > currentHour || (hour === currentHour && currentMinute === 0));
 
   if (nextHour != null && !(nextHour === currentHour && currentMinute === 0)) {
-    return `today, ${String(nextHour).padStart(2, '0')}:00 Europe/London`;
+    return `today, ${String(nextHour).padStart(2, '0')}:00 Europe/Rome`;
   }
 
   if (nextHour != null) {
     const following = appConfig.scheduleHours.find((hour) => hour > currentHour);
 
     if (following != null) {
-      return `today, ${String(following).padStart(2, '0')}:00 Europe/London`;
+      return `today, ${String(following).padStart(2, '0')}:00 Europe/Rome`;
     }
   }
 
-  return `tomorrow after ${currentDay} ${currentMonth}, ${String(appConfig.scheduleHours[0]).padStart(2, '0')}:00 Europe/London`;
+  return `tomorrow after ${currentDay} ${currentMonth}, ${String(appConfig.scheduleHours[0]).padStart(2, '0')}:00 Europe/Rome`;
 }
 
 function getEnabledSourceNames() {
@@ -225,6 +225,7 @@ async function runSearchCycle(trigger = 'scheduled') {
             search_id: search.id,
             search_name: search.name,
             source: sourceClient.name,
+            country: search.country,
           };
 
           // Score every candidate; annotate with filter_reason instead of dropping.
@@ -263,6 +264,7 @@ async function runSearchCycle(trigger = 'scheduled') {
               title: job.title,
               description: job.description,
               salaryTextHint: job.salaryText,
+              country: search.country,
             });
             job = mergeJobSignals(job, signals);
 
@@ -307,6 +309,7 @@ async function runSearchCycle(trigger = 'scheduled') {
             scoredJobs.push({
               job: {
                 ...job,
+                country: search.country,
                 tags: job.tags ?? search.tags,
                 ragRating: rating,
                 ragScore: score,

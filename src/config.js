@@ -10,6 +10,14 @@ dotenv.config({
 const dataDir = path.resolve(process.cwd(), 'data');
 const searchesPath = path.join(dataDir, 'searches.json');
 
+export const SUPPORTED_COUNTRIES = ['uk', 'it'];
+export const DEFAULT_COUNTRY = 'uk';
+
+function normalizeCountry(value) {
+  const c = String(value ?? '').trim().toLowerCase();
+  return SUPPORTED_COUNTRIES.includes(c) ? c : DEFAULT_COUNTRY;
+}
+
 const defaultSearches = [
   {
     id: 'bim_lead',
@@ -77,6 +85,7 @@ const defaultSearches = [
 
 const defaultSearchConfig = {
   defaults: {
+    country: DEFAULT_COUNTRY,
     location: 'London',
     distance_from_location: 10,
     allowed_sources: ['adzuna', 'reed', 'serper'],
@@ -125,6 +134,7 @@ function normalizeSearch(search, defaults) {
     id: String(search.id),
     name: String(search.name ?? search.id),
     enabled: search.enabled !== false,
+    country: normalizeCountry(search.country ?? defaults.country),
     keywords,
     query,
     location: String(search.location ?? defaults.location),
@@ -186,7 +196,7 @@ function resolveSourceMaxResultsPerQuery() {
 }
 
 export const appConfig = {
-  timezone: 'Europe/London',
+  timezone: 'Europe/Rome',
   scheduleExpression: '0 1,7,13,19 * * *',
   scheduleHours: [1, 7, 13, 19],
   dataDir,
@@ -255,6 +265,7 @@ export function loadSearches() {
     const defaults = {
       ...defaultSearchConfig.defaults,
       ...(parsed.defaults ?? {}),
+      country: normalizeCountry(parsed.defaults?.country ?? defaultSearchConfig.defaults.country),
       allowed_sources: arrayOrFallback(parsed.defaults?.allowed_sources, defaultSearchConfig.defaults.allowed_sources),
       exclude_keywords: arrayOrFallback(parsed.defaults?.exclude_keywords, defaultSearchConfig.defaults.exclude_keywords),
       tags: arrayOrFallback(parsed.defaults?.tags, defaultSearchConfig.defaults.tags),

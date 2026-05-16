@@ -11,6 +11,7 @@ const HEADERS = [
   'title',
   'company',
   'location',
+  'country',
   'salary_text',
   'salary_min',
   'salary_max',

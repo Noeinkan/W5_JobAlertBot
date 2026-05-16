@@ -61,3 +61,17 @@ test('sourceAllowed respects per-search source lists', () => {
   assert.equal(sourceAllowed(search, 'adzuna'), true);
   assert.equal(sourceAllowed(search, 'serper'), false);
 });
+
+test('sourceAllowed routes Italian searches only to multi-country sources', () => {
+  const search = {
+    country: 'it',
+    allowed_sources: ['adzuna', 'reed', 'linkedin', 'jooble'],
+  };
+
+  // reed is UK-only and must be filtered out for IT searches
+  assert.equal(sourceAllowed(search, 'reed'), false);
+  // adzuna, linkedin, jooble support IT
+  assert.equal(sourceAllowed(search, 'adzuna'), true);
+  assert.equal(sourceAllowed(search, 'linkedin'), true);
+  assert.equal(sourceAllowed(search, 'jooble'), true);
+});
