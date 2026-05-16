@@ -14,7 +14,6 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const RUNS_DIR = path.join(__dirname, '..', '..', 'logs', 'runs');
 export const CHART_BUNDLE = path.join(__dirname, '..', '..', 'node_modules', 'chart.js', 'dist', 'chart.umd.js');
 export const PUBLIC_DIR = path.join(__dirname, 'public');
-export const ALL_JOBS_ID = '__all__.csv';
 
 let readonlyDb = null;
 let readonlyStmt = null;
@@ -128,10 +127,9 @@ export function getJobPreview(title, company, source) {
 }
 
 export function listCsvFiles() {
-  const csvs = fs.existsSync(RUNS_DIR)
+  return fs.existsSync(RUNS_DIR)
     ? fs.readdirSync(RUNS_DIR).filter(f => f.endsWith('.csv')).sort().reverse()
     : [];
-  return [ALL_JOBS_ID, ...csvs];
 }
 
 /** Matches UNIQUE(title, company, source) / dashboard job-action UPDATE (company normalized to ''). */

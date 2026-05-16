@@ -2622,14 +2622,39 @@ function fsBindCardButtons() {
 }
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
+const ALL_JOBS_VALUE = '__all__';
+const ALL_JOBS_LABEL = '★ All jobs (deduped from DB)';
+
 async function loadFile(filename) {
   document.getElementById('main').innerHTML = '<div id="loading">Loading…</div>';
-  const res = await fetch(API_BASE + '/api/data?file=' + encodeURIComponent(filename));
+  const url = filename === ALL_JOBS_VALUE
+    ? API_BASE + '/api/data/all'
+    : API_BASE + '/api/data?file=' + encodeURIComponent(filename);
+  const res = await fetch(url);
   if (!res.ok) throw new Error(await res.text());
   const data = await res.json();
   const d = data.runAt ? new Date(data.runAt).toLocaleString('en-GB') : '';
   document.getElementById('meta').textContent = d + (data.trigger ? '  ·  ' + data.trigger : '');
   render(data);
+}
+
+function populateFileSelect(sel, files, preserveValue) {
+  sel.innerHTML = '';
+  const allOpt = document.createElement('option');
+  allOpt.value = ALL_JOBS_VALUE;
+  allOpt.textContent = ALL_JOBS_LABEL;
+  sel.appendChild(allOpt);
+  files.forEach(f => {
+    const opt = document.createElement('option');
+    opt.value = f;
+    opt.textContent = f.replace(/^run_/, '').replace(/(_oneshot|_bot)\.csv$/, ' ($1).csv');
+    sel.appendChild(opt);
+  });
+  if (preserveValue && (preserveValue === ALL_JOBS_VALUE || files.includes(preserveValue))) {
+    sel.value = preserveValue;
+  } else {
+    sel.value = ALL_JOBS_VALUE;
+  }
 }
 
 let trendChart = null;
@@ -2734,19 +2759,12 @@ async function init() {
   const res = await fetch(API_BASE + '/api/files');
   const files = await res.json();
   const sel = document.getElementById('fileSelect');
-  files.forEach((f, i) => {
-    const opt = document.createElement('option');
-    opt.value = f;
-    opt.textContent = f.replace(/^run_/, '').replace(/(_oneshot|_bot)\.csv$/, ' ($1).csv');
-    if (i === 0) opt.selected = true;
-    sel.appendChild(opt);
-  });
+  populateFileSelect(sel, files);
   sel.addEventListener('change', () => loadFile(sel.value));
   initSectionToggles();
   fsBindCardButtons();
   loadTrend();
-  if (files.length) await loadFile(files[0]);
-  else document.getElementById('main').innerHTML = '<div id="error">No CSV files found in logs/runs/</div>';
+  await loadFile(sel.value);
 }
 
 init().catch(e => {
@@ -2786,22 +2804,8 @@ async function refreshFiles() {
     const files = await res.json();
     const sel   = document.getElementById('fileSelect');
     const cur   = sel.value;
-    sel.innerHTML = '';
-    files.forEach((f, i) => {
-      const opt = document.createElement('option');
-      opt.value = f;
-      opt.textContent = f === '__all__.csv'
-        ? '★ All jobs (deduped from DB)'
-        : f.replace(/^run_/, '').replace(/(_oneshot|_bot)\.csv$/, ' ($1).csv');
-      sel.appendChild(opt);
-    });
-    // keep selection or auto-load newest
-    if (files.includes(cur)) {
-      sel.value = cur;
-    } else if (files.length) {
-      sel.value = files[0];
-      loadFile(files[0]);
-    }
+    populateFileSelect(sel, files, cur);
+    if (sel.value !== cur) loadFile(sel.value);
     loadTrend();
   } catch (_) {}
 }

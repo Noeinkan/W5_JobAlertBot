@@ -2,7 +2,6 @@ import fs from 'fs';
 import http from 'http';
 import path from 'path';
 import {
-  ALL_JOBS_ID,
   CHART_BUNDLE,
   PUBLIC_DIR,
   RUNS_DIR,
@@ -262,20 +261,21 @@ export function createDashboardServer({ port, host, token, basePath }) {
       return;
     }
 
+    if (pathname === '/api/data/all') {
+      try {
+        const data = getAllJobsAggregate();
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(data));
+      } catch (e) {
+        res.writeHead(500); res.end(e.message);
+      }
+      return;
+    }
+
     if (pathname === '/api/data') {
       const file = url.searchParams.get('file');
-      if (!file || file.includes('..') || !file.endsWith('.csv')) {
+      if (!file || file.includes('..') || !file.endsWith('.csv') || file.startsWith('.') || file.includes('/') || file.includes('\\')) {
         res.writeHead(400); res.end('Bad file param'); return;
-      }
-      if (file === ALL_JOBS_ID) {
-        try {
-          const data = getAllJobsAggregate();
-          res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify(data));
-        } catch (e) {
-          res.writeHead(500); res.end(e.message);
-        }
-        return;
       }
       const filePath = path.join(RUNS_DIR, file);
       if (!fs.existsSync(filePath)) {
@@ -297,7 +297,7 @@ export function createDashboardServer({ port, host, token, basePath }) {
       const series = [];
       for (const f of files) {
         try {
-          const data = f === ALL_JOBS_ID ? getAllJobsAggregate() : getCsvAggregate(path.join(RUNS_DIR, f), f);
+          const data = getCsvAggregate(path.join(RUNS_DIR, f), f);
           const fetched = data.total || 0;
           series.push({
             file: f,

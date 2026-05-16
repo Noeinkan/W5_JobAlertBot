@@ -3,6 +3,7 @@
  * Usage: node src/dashboard.js [--port 3099]
  */
 import 'dotenv/config';
+import { spawn } from 'node:child_process';
 import { createDashboardServer } from './dashboard/server.js';
 
 const portArg = process.argv.indexOf('--port');
@@ -26,7 +27,26 @@ const server = createDashboardServer({
 
 server.listen(PORT, HOST, () => {
   const displayHost = HOST === '0.0.0.0' ? 'localhost' : HOST;
-  console.log(`Dashboard running → http://${displayHost}:${PORT}`);
+  const url = `http://${displayHost}:${PORT}${BASE_PATH}`;
+  console.log(`Dashboard running → ${url}`);
   if (TOKEN) console.log('Dashboard token protection: enabled');
   if (!LOOPBACK_HOSTS.has(HOST)) console.log(`Dashboard bound to non-loopback host ${HOST}; token required on bot-control endpoints.`);
+
+  const shouldOpen = process.env.DASHBOARD_OPEN !== '0'
+    && (HOST === '0.0.0.0' || LOOPBACK_HOSTS.has(HOST));
+  if (shouldOpen) openBrowser(url);
 });
+
+function openBrowser(url) {
+  const platform = process.platform;
+  const [cmd, args] = platform === 'win32'
+    ? ['cmd', ['/c', 'start', '""', url]]
+    : platform === 'darwin'
+      ? ['open', [url]]
+      : ['xdg-open', [url]];
+  try {
+    spawn(cmd, args, { stdio: 'ignore', detached: true }).unref();
+  } catch (err) {
+    console.log(`Could not auto-open browser (${err.message}). Open ${url} manually.`);
+  }
+}
