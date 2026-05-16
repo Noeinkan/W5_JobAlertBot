@@ -4,3 +4,7 @@ data/*.db
 data/*.db-*
 logs/
 *.log
+
+# RTK (Rust Token Killer) — local-only Copilot integration
+.github/copilot-instructions.md
+.github/hooks/
