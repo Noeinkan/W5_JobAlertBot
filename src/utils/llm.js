@@ -90,6 +90,8 @@ export async function analyzeJobWithLLM(job, { regexRating, regexScore } = {}) {
       regexRating,
       llmRating: validated.rating,
       llmScore: validated.score,
+      llmReason: validated.reason,
+      llmFitSummary: validated.fitSummary,
       latencyMs,
     });
 
