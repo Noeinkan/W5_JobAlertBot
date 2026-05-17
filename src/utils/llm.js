@@ -2,35 +2,24 @@ import axios from 'axios';
 import { env } from '../config.js';
 import { logger } from './logger.js';
 
-const DESCRIPTION_MAX_CHARS = 1500;
+const DESCRIPTION_MAX_CHARS = 600;
 const VALID_RATINGS = new Set(['Green', 'Amber', 'Red']);
 
 function buildPrompt(job, { regexRating, regexScore }) {
-  const title = String(job.title ?? '').slice(0, 200);
-  const company = String(job.company ?? '').slice(0, 120);
-  const location = String(job.location ?? '').slice(0, 120);
+  const title = String(job.title ?? '').slice(0, 160);
+  const company = String(job.company ?? '').slice(0, 100);
   const description = String(job.description ?? '').slice(0, DESCRIPTION_MAX_CHARS);
 
   return [
-    'You are a hiring filter for a senior AEC (Architecture, Engineering, Construction) digital construction / BIM / information management specialist based in the UK.',
-    'Given a job posting, return a single JSON object rating its fit for that specialist.',
-    '',
-    'Rating rubric:',
-    '- "Green": senior/lead/head/director role clearly in AEC digital construction, BIM, information management, digital delivery, digital engineering, CDE, ISO 19650, or digital twin space.',
-    '- "Amber": adjacent or borderline — e.g. mid-level AEC digital role, or senior role where AEC relevance is ambiguous.',
-    '- "Red": not a fit — junior/coordinator/modeller/technician/assistant, non-AEC sectors (pure SaaS, fintech, data engineering, healthcare nursing, legal, etc.).',
-    '',
-    'A regex pre-filter has already produced an initial verdict; use it as context but do not blindly accept it — re-read the description and adjust if the title is misleading (e.g. "Senior" headline but mid-level body, or implicit AEC seniority not captured by keywords).',
-    '',
-    `Regex verdict: ${regexRating ?? 'unknown'} (score ${regexScore ?? 'n/a'})`,
+    'Rate this job for a senior UK AEC digital construction / BIM / information management specialist.',
+    'Green = clearly senior AEC digital role. Amber = borderline. Red = junior, wrong sector, or non-AEC.',
+    `Regex pre-filter said: ${regexRating ?? '?'} (score ${regexScore ?? '?'}). Re-read and adjust if needed.`,
     '',
     `Title: ${title}`,
     `Company: ${company}`,
-    `Location: ${location}`,
     `Description: ${description}`,
     '',
-    'Respond with ONLY this JSON shape, no prose:',
-    '{"rating":"Green|Amber|Red","score":0-30,"reason":"one short sentence","fitSummary":"one short sentence on the actual role fit"}',
+    'Reply with ONLY: {"rating":"Green|Amber|Red","score":0-30,"reason":"<8 words>","fitSummary":"<8 words>"}',
   ].join('\n');
 }
 
@@ -95,7 +84,7 @@ export async function analyzeJobWithLLM(job, { regexRating, regexScore } = {}) {
       return { ok: false, error: 'parse', latencyMs };
     }
 
-    logger.debug('LLM analysis succeeded', {
+    logger.info('LLM analysis succeeded', {
       source: job.source,
       title: job.title,
       regexRating,
@@ -119,7 +108,7 @@ export async function analyzeJobWithLLM(job, { regexRating, regexScore } = {}) {
     const errCode = error.code === 'ECONNABORTED' || /timeout/i.test(error.message ?? '')
       ? 'timeout'
       : 'http';
-    logger.debug('LLM analysis failed', {
+    logger.warn('LLM analysis failed', {
       source: job.source,
       latencyMs,
       error: errCode,
