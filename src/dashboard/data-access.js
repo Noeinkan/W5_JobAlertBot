@@ -58,7 +58,9 @@ export function getAllJobsForDashboard() {
         profile_rating, profile_score, profile_reason, profile_matches,
         remote_type, contract_length_months, sectors, clearances, tech_tools,
         years_experience, has_bonus, bonus_percent, car_allowance,
-        pension_percent, has_equity, applied, discarded, expired
+        pension_percent, has_equity, applied, discarded, expired,
+        regex_rating, regex_score, regex_reason,
+        llm_rating, llm_score, llm_reason, llm_fit_summary, llm_model, llm_latency_ms
       FROM jobs
       ORDER BY found_at DESC, id DESC
     `);
@@ -193,6 +195,15 @@ export function rowFromDbJob(job) {
     rag_rating: job.rag_rating ?? '',
     rag_score: job.rag_score ?? '',
     rag_reason: job.rag_reason ?? '',
+    regex_rating: job.regex_rating ?? '',
+    regex_score: job.regex_score ?? '',
+    regex_reason: job.regex_reason ?? '',
+    llm_rating: job.llm_rating ?? '',
+    llm_score: job.llm_score ?? '',
+    llm_reason: job.llm_reason ?? '',
+    llm_fit_summary: job.llm_fit_summary ?? '',
+    llm_model: job.llm_model ?? '',
+    llm_latency_ms: job.llm_latency_ms ?? '',
     profile_rating: job.profile_rating ?? '',
     profile_score: job.profile_score ?? '',
     profile_reason: job.profile_reason ?? '',

@@ -186,6 +186,11 @@ export const env = {
   monsterClientSecret: process.env.MONSTER_CLIENT_SECRET ?? '',
   glassdoorPartnerId: process.env.GLASSDOOR_PARTNER_ID ?? '',
   glassdoorPartnerKey: process.env.GLASSDOOR_PARTNER_KEY ?? '',
+  ollamaEnabled: ['true', '1', 'yes', 'on'].includes(String(process.env.OLLAMA_ENABLED ?? '').toLowerCase()),
+  ollamaHost: process.env.OLLAMA_HOST ?? 'http://127.0.0.1:11434',
+  ollamaModel: process.env.OLLAMA_MODEL ?? 'qwen2.5:1.5b-instruct-q4_K_M',
+  ollamaTimeoutMs: Number.parseInt(process.env.OLLAMA_TIMEOUT_MS ?? '3000', 10),
+  ollamaMaxTokens: Number.parseInt(process.env.OLLAMA_MAX_TOKENS ?? '120', 10),
 };
 
 function resolveSourceMaxResultsPerQuery() {

@@ -51,6 +51,7 @@ import { scoreJob } from './utils/rag.js';
 import { isSeniorEnough } from './utils/seniority.js';
 import { enrichJobDescription } from './utils/enrich.js';
 import { extractJobSignals, mergeJobSignals } from './utils/extractors.js';
+import { analyzeJobWithLLM } from './utils/llm.js';
 import { createRunCsvLog } from './utils/run_log_csv.js';
 import { loadProfileFitConfig, scoreProfileFit } from './utils/profileFit.js';
 
@@ -272,6 +273,15 @@ async function runSearchCycle(trigger = 'scheduled') {
             const seniority = isSeniorEnough(job);
             const { rating, score, reason, matches } = scoreJob(job);
 
+            // LLM analysis runs on Amber+Green when enabled; on success its verdict
+            // overrides the regex rating for downstream filters and notifications.
+            const llmResult = (env.ollamaEnabled && rating !== 'Red')
+              ? await analyzeJobWithLLM(job, { regexRating: rating, regexScore: score })
+              : null;
+            const effective = llmResult?.ok
+              ? { rating: llmResult.rating, score: llmResult.score, reason: llmResult.reason }
+              : { rating, score, reason };
+
             let profileRating = null;
             let profileScore = null;
             let profileReason = null;
@@ -291,7 +301,7 @@ async function runSearchCycle(trigger = 'scheduled') {
             } else if (!seniority.passes) {
               filterReason = 'filtered_seniority';
               cycleStats.filteredSeniority += 1;
-            } else if (rating === 'Red') {
+            } else if (effective.rating === 'Red') {
               filterReason = 'filtered_rag';
               cycleStats.filteredRag += 1;
             } else if (profileFitConfigPath && profileRating === 'Red') {
@@ -311,10 +321,20 @@ async function runSearchCycle(trigger = 'scheduled') {
                 ...job,
                 country: search.country,
                 tags: job.tags ?? search.tags,
-                ragRating: rating,
-                ragScore: score,
-                ragReason: reason,
+                ragRating: effective.rating,
+                ragScore: effective.score,
+                ragReason: effective.reason,
                 ragMatches: matches,
+                regexRating: rating,
+                regexScore: score,
+                regexReason: reason,
+                llmRating: llmResult?.ok ? llmResult.rating : null,
+                llmScore: llmResult?.ok ? llmResult.score : null,
+                llmReason: llmResult?.ok ? llmResult.reason : null,
+                llmFitSummary: llmResult?.ok ? llmResult.fitSummary : null,
+                llmModel: llmResult?.ok ? llmResult.model : null,
+                llmAnalyzedAt: llmResult?.ok ? llmResult.analyzedAt : null,
+                llmLatencyMs: llmResult ? llmResult.latencyMs : null,
                 profileRating,
                 profileScore,
                 profileReason,
@@ -331,9 +351,15 @@ async function runSearchCycle(trigger = 'scheduled') {
                 is_contract: job.isContract ? 'yes' : 'no',
                 desc_chars: job.description?.length ?? 0,
                 enriched: enriched ? 'yes' : 'no',
-                rag_rating: rating,
-                rag_score: score,
-                rag_reason: reason,
+                rag_rating: effective.rating,
+                rag_score: effective.score,
+                rag_reason: effective.reason,
+                regex_rating: rating,
+                regex_score: score,
+                regex_reason: reason,
+                llm_rating: llmResult?.ok ? llmResult.rating : '',
+                llm_score: llmResult?.ok ? llmResult.score : '',
+                llm_latency_ms: llmResult ? llmResult.latencyMs : '',
                 profile_rating: profileRating ?? '',
                 profile_score: profileScore ?? '',
                 profile_reason: profileReason ?? '',

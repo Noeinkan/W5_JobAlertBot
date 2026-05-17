@@ -32,6 +32,16 @@ export const JOB_COLUMN_ADDITIONS = [
   ['discarded', 'INTEGER'],
   ['expired', 'INTEGER'],
   ['country', 'TEXT'],
+  ['regex_rating', 'TEXT'],
+  ['regex_score', 'INTEGER'],
+  ['regex_reason', 'TEXT'],
+  ['llm_rating', 'TEXT'],
+  ['llm_score', 'INTEGER'],
+  ['llm_reason', 'TEXT'],
+  ['llm_fit_summary', 'TEXT'],
+  ['llm_model', 'TEXT'],
+  ['llm_analyzed_at', 'INTEGER'],
+  ['llm_latency_ms', 'INTEGER'],
 ];
 
 export function ensureJobsSchema(db) {

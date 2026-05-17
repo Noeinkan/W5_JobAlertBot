@@ -44,7 +44,17 @@ function createStatements(db) {
         bonus_percent,
         car_allowance,
         pension_percent,
-        has_equity
+        has_equity,
+        regex_rating,
+        regex_score,
+        regex_reason,
+        llm_rating,
+        llm_score,
+        llm_reason,
+        llm_fit_summary,
+        llm_model,
+        llm_analyzed_at,
+        llm_latency_ms
       ) VALUES (
         @external_id,
         @source,
@@ -82,7 +92,17 @@ function createStatements(db) {
         @bonus_percent,
         @car_allowance,
         @pension_percent,
-        @has_equity
+        @has_equity,
+        @regex_rating,
+        @regex_score,
+        @regex_reason,
+        @llm_rating,
+        @llm_score,
+        @llm_reason,
+        @llm_fit_summary,
+        @llm_model,
+        @llm_analyzed_at,
+        @llm_latency_ms
       )
     `),
     updateExtractionStatement: db.prepare(`
@@ -244,6 +264,16 @@ export function createDatabase(databasePath = appConfig.dbPath) {
         car_allowance: Number.isFinite(job.carAllowance) ? job.carAllowance : null,
         pension_percent: Number.isFinite(job.pensionPercent) ? job.pensionPercent : null,
         has_equity: job.hasEquity ? 1 : 0,
+        regex_rating: job.regexRating ?? null,
+        regex_score: Number.isFinite(job.regexScore) ? job.regexScore : null,
+        regex_reason: job.regexReason ?? null,
+        llm_rating: job.llmRating ?? null,
+        llm_score: Number.isFinite(job.llmScore) ? job.llmScore : null,
+        llm_reason: job.llmReason ?? null,
+        llm_fit_summary: job.llmFitSummary ?? null,
+        llm_model: job.llmModel ?? null,
+        llm_analyzed_at: Number.isFinite(job.llmAnalyzedAt) ? job.llmAnalyzedAt : null,
+        llm_latency_ms: Number.isFinite(job.llmLatencyMs) ? job.llmLatencyMs : null,
       };
 
       const result = statements.insertJobStatement.run(normalized);
@@ -306,7 +336,16 @@ export function createDatabase(databasePath = appConfig.dbPath) {
           bonus_percent,
           car_allowance,
           pension_percent,
-          has_equity
+          has_equity,
+          regex_rating,
+          regex_score,
+          regex_reason,
+          llm_rating,
+          llm_score,
+          llm_reason,
+          llm_fit_summary,
+          llm_model,
+          llm_latency_ms
         FROM jobs
         ORDER BY found_at DESC, id DESC
       `).all();

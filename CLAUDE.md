@@ -43,7 +43,7 @@ Node.js 20+, ESM, discord.js v14, better-sqlite3, axios, node-cron, dotenv, fast
 **Dashboard** (`npm run dashboard` → `node src/dashboard.js --port 3099`): separate HTTP server for analytics UI, run CSVs, and job table (not started by the bot). Env:
 
 - `DASHBOARD_HOST` — bind address (default `127.0.0.1`; `0.0.0.0` for all interfaces).
-- `DASHBOARD_TOKEN` — required when binding to a **non-loopback** host (refuses to listen otherwise).
+- `DASHBOARD_TOKEN` — required when binding to a **non-loopback** host (refuses to listen otherwise). When set with a non-loopback bind, the token is enforced on **every** endpoint (not only bot-control). Callers must send `x-dashboard-token: <token>`; a reverse proxy can inject it.
 - `DASHBOARD_BASE_PATH` — optional URL prefix when served behind a reverse proxy (no trailing slash).
 
 ## Commands
@@ -83,6 +83,15 @@ After scoring and extraction, persisted fields also include RAG (`ragRating`, `r
 - **Credentials:** Adzuna, Reed, Serper, Jooble, Guardian Jobs; optional Monster (OAuth), Glassdoor (partner keys).  
 - Guild-scoped slash commands only when `DISCORD_GUILD_ID` is set.  
 - Searches normalized in `src/config.js` — keep in sync with `data/searches.json` schema.
+
+## Production
+
+- **URL:** `https://jobs.noeinsolutions.com` (HTTP Basic Auth at the nginx layer; nginx injects the dashboard token).
+- **Host:** `root@77.42.70.26`. Bot code lives at `/opt/job-alert-bot`; deploy with `bash deploy.sh`.
+- **Dashboard runtime:** PM2 (`pm2 list` → `dashboard` + `job-alert-bot`). Bound to `0.0.0.0:3099` per `ecosystem.config.cjs`; the global token guard prevents anonymous direct access.
+- **Reverse proxy:** the nginx that serves `noeinsolutions.com` lives in the **`bep-generator` docker-compose stack** at `/opt/bep-generator`, not in the bot repo. The `jobs.noeinsolutions.com` vhost is bind-mounted from `/opt/bep-generator/nginx/conf.d/jobs.conf`; basic-auth credentials at `/opt/bep-generator/nginx/htpasswd`. Nginx reaches the dashboard via `host.docker.internal:3099` (declared via `extra_hosts: host-gateway` in compose).
+- **TLS:** Let's Encrypt issued via `certbot --webroot -w /var/www/certbot`; `/etc/letsencrypt` is bind-mounted into the nginx container. Auto-renewal via certbot's systemd timer.
+- **Gotcha — Docker bind-mounted files track inode, not path.** `scp` and `sed -i` replace files via temp+rename, breaking the mount silently — the container keeps reading the old content. When editing prod nginx conf, either use `cat new > target` (preserves inode) or recreate the container with `docker compose up -d --force-recreate nginx`.
 
 ## Development
 
