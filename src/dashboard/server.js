@@ -133,12 +133,16 @@ function serveStatic(res, filePath, contentType, cacheControl = 'public, max-age
 
 export function createDashboardServer({ port, host, token, basePath }) {
   const HTML = buildDashboardHtml(basePath, env.profileFitEnabled);
+  const LOOPBACK = new Set(['127.0.0.1', 'localhost', '::1', '0:0:0:0:0:0:0:1']);
+  const enforceTokenGlobally = !!token && !LOOPBACK.has(host);
 
   return http.createServer((req, res) => {
     const url = new URL(req.url, `http://localhost:${port}`);
     const pathname = basePath && url.pathname.startsWith(basePath)
       ? url.pathname.slice(basePath.length) || '/'
       : url.pathname;
+
+    if (enforceTokenGlobally && !tokenOk(req, res, token)) return;
 
     if (pathname === '/vendor/chart.umd.js' || pathname === '/vendor/chart.umd.min.js') {
       if (!fs.existsSync(CHART_BUNDLE)) {

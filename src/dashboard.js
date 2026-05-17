@@ -32,7 +32,9 @@ server.listen(PORT, HOST, () => {
   if (TOKEN) console.log('Dashboard token protection: enabled');
   if (!LOOPBACK_HOSTS.has(HOST)) console.log(`Dashboard bound to non-loopback host ${HOST}; token required on bot-control endpoints.`);
 
+  const headlessLinux = process.platform === 'linux' && !process.env.DISPLAY;
   const shouldOpen = process.env.DASHBOARD_OPEN !== '0'
+    && !headlessLinux
     && (HOST === '0.0.0.0' || LOOPBACK_HOSTS.has(HOST));
   if (shouldOpen) openBrowser(url);
 });
@@ -45,7 +47,9 @@ function openBrowser(url) {
       ? ['open', [url]]
       : ['xdg-open', [url]];
   try {
-    spawn(cmd, args, { stdio: 'ignore', detached: true }).unref();
+    const child = spawn(cmd, args, { stdio: 'ignore', detached: true });
+    child.on('error', err => console.log(`Could not auto-open browser (${err.message}). Open ${url} manually.`));
+    child.unref();
   } catch (err) {
     console.log(`Could not auto-open browser (${err.message}). Open ${url} manually.`);
   }

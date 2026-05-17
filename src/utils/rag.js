@@ -83,6 +83,25 @@ const NON_AEC_BLOCKERS = [
   /\bchef\b|\bcook\b/i,
 ];
 
+// Non-AEC description/title signals — strong negatives instead of instant Red,
+// so legitimate AEC roles that mention these in passing aren't killed outright.
+// Tuned so a single strong hit (e.g. "Databricks") overcomes a typical Green
+// stack of Senior+Manager+Digital Engineering.
+const NON_AEC_DESC_BLOCKERS = [
+  { pattern: /\bdatabricks\b/i, score: -15, label: 'Databricks' },
+  { pattern: /\bsnowflake\b/i, score: -12, label: 'Snowflake' },
+  { pattern: /data platform/i, score: -12, label: 'Data platform' },
+  { pattern: /data (engineering|warehouse|lake|pipeline|lakehouse)/i, score: -10, label: 'Data engineering' },
+  { pattern: /\bfintech\b/i, score: -12, label: 'Fintech' },
+  { pattern: /investment bank/i, score: -15, label: 'Investment bank' },
+  { pattern: /trading (desk|platform|floor)/i, score: -12, label: 'Trading' },
+  { pattern: /\bsaas\b/i, score: -10, label: 'SaaS' },
+  { pattern: /\bkubernetes\b/i, score: -8, label: 'Kubernetes' },
+  { pattern: /\bkafka\b/i, score: -8, label: 'Kafka' },
+  { pattern: /\bspark\b\s*(streaming|sql|jobs?)/i, score: -8, label: 'Spark' },
+  { pattern: /financial services/i, score: -6, label: 'Financial services' },
+];
+
 const GREEN_THRESHOLD = 12;
 const AMBER_THRESHOLD = 5;
 
@@ -101,7 +120,7 @@ export function scoreJob(job) {
   const desc = (job.description || '').toLowerCase();
   const fullText = title + ' ' + desc;
 
-  const emptyMatches = { title: [], domain: [], experience: [] };
+  const emptyMatches = { title: [], domain: [], experience: [], negatives: [] };
   for (const blocker of NON_AEC_BLOCKERS) {
     if (blocker.test(title)) {
       return { rating: 'Red', score: -99, reason: 'Non-AEC role', matches: emptyMatches };
@@ -111,6 +130,7 @@ export function scoreJob(job) {
   const titleMatches = [];
   const domainMatches = [];
   const experienceMatches = [];
+  const negativeMatches = [];
 
   let titleRaw = 0;
   for (const { pattern, score: w, label } of TITLE_WEIGHTS) {
@@ -140,6 +160,12 @@ export function scoreJob(job) {
   for (const { pattern, score: w } of NEGATIVE_WEIGHTS) {
     if (pattern.test(fullText)) negRaw += w;
   }
+  for (const { pattern, score: w, label } of NON_AEC_DESC_BLOCKERS) {
+    if (pattern.test(fullText)) {
+      negRaw += w;
+      negativeMatches.push(label);
+    }
+  }
 
   const score = Math.round(
     bm25Cap(titleRaw, 6) +
@@ -154,12 +180,14 @@ export function scoreJob(job) {
   if (titleMatches.length > 0) parts.push(`Title: ${titleMatches.join(', ')}`);
   if (domainMatches.length > 0) parts.push(`Domain: ${domainMatches.slice(0, 3).join(', ')}`);
   if (experienceMatches.length > 0) parts.push(`Experience: ${experienceMatches.slice(0, 2).join(', ')}`);
+  if (negativeMatches.length > 0) parts.push(`Non-AEC: ${negativeMatches.slice(0, 3).join(', ')}`);
   const reason = parts.length > 0 ? parts.join(' · ') : null;
 
   const matches = {
     title: titleMatches,
     domain: domainMatches,
     experience: experienceMatches,
+    negatives: negativeMatches,
   };
 
   return { rating, score, reason, matches };
