@@ -145,3 +145,23 @@ test('buildSalaryInfo detects partita IVA as contract', () => {
   });
   assert.equal(salary.isContract, true);
 });
+
+test('buildSalaryInfo defaults German salary fallbacks to EUR', () => {
+  const salary = buildSalaryInfo({
+    salaryMin: 50000,
+    salaryMax: 65000,
+    country: 'de',
+  });
+
+  assert.equal(salary.currency, 'EUR');
+});
+
+test('buildSalaryInfo defaults Danish salary fallbacks to DKK', () => {
+  const salary = buildSalaryInfo({
+    salaryMin: 600000,
+    salaryMax: 750000,
+    country: 'dk',
+  });
+
+  assert.equal(salary.currency, 'DKK');
+});

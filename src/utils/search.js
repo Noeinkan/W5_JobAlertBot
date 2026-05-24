@@ -1,13 +1,14 @@
+import { jobMatchesCountry } from './countries.js';
+
 /**
  * Country coverage per source. Sources not listed default to UK-only.
- * Italian market reuses the 4 multi-country adapters that can be parameterized
- * by country code or location string (adzuna, linkedin, jooble, serper).
+ * Multi-country adapters are parameterized by country code or geo location.
  */
 const SOURCE_COUNTRIES = {
-  adzuna: ['uk', 'it'],
-  linkedin: ['uk', 'it'],
-  jooble: ['uk', 'it'],
-  serper: ['uk', 'it'],
+  adzuna: ['uk', 'it', 'de', 'nl'],
+  linkedin: ['uk', 'it', 'de', 'nl', 'dk'],
+  jooble: ['uk', 'it', 'de', 'nl', 'dk'],
+  serper: ['uk', 'it', 'de', 'nl', 'dk'],
 };
 
 export function sourceSupportsCountry(sourceName, country) {
@@ -26,6 +27,10 @@ export function jobMatchesSearch(job, search) {
   }
 
   if ((search.exclude_keywords ?? []).some((keyword) => haystack.includes(String(keyword).toLowerCase()))) {
+    return false;
+  }
+
+  if (!jobMatchesCountry(job, search.country)) {
     return false;
   }
 

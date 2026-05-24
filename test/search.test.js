@@ -53,6 +53,42 @@ test('jobMatchesSearch accepts matching jobs when no filters exclude them', () =
   assert.equal(jobMatchesSearch(job, search), true);
 });
 
+test('jobMatchesSearch rejects explicit United States listings for European searches', () => {
+  const search = {
+    country: 'nl',
+    contract_only: false,
+    exclude_keywords: [],
+  };
+
+  const job = {
+    title: 'Digital Construction Lead',
+    company: 'Example BV',
+    location: 'Remote, United States',
+    description: 'Leadership role for a remote-first practice',
+    isContract: false,
+  };
+
+  assert.equal(jobMatchesSearch(job, search), false);
+});
+
+test('jobMatchesSearch keeps city-only listings when no conflicting country is stated', () => {
+  const search = {
+    country: 'nl',
+    contract_only: false,
+    exclude_keywords: [],
+  };
+
+  const job = {
+    title: 'Digital Construction Lead',
+    company: 'Example BV',
+    location: 'Amsterdam',
+    description: 'Leadership role for major infrastructure programme',
+    isContract: false,
+  };
+
+  assert.equal(jobMatchesSearch(job, search), true);
+});
+
 test('sourceAllowed respects per-search source lists', () => {
   const search = {
     allowed_sources: ['adzuna', 'reed'],
@@ -74,4 +110,16 @@ test('sourceAllowed routes Italian searches only to multi-country sources', () =
   assert.equal(sourceAllowed(search, 'adzuna'), true);
   assert.equal(sourceAllowed(search, 'linkedin'), true);
   assert.equal(sourceAllowed(search, 'jooble'), true);
+});
+
+test('sourceAllowed routes Denmark searches only to supported multi-country sources', () => {
+  const search = {
+    country: 'dk',
+    allowed_sources: ['adzuna', 'linkedin', 'jooble', 'serper'],
+  };
+
+  assert.equal(sourceAllowed(search, 'adzuna'), false);
+  assert.equal(sourceAllowed(search, 'linkedin'), true);
+  assert.equal(sourceAllowed(search, 'jooble'), true);
+  assert.equal(sourceAllowed(search, 'serper'), true);
 });

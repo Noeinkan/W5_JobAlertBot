@@ -1,6 +1,12 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import dotenv from 'dotenv';
+import {
+  DEFAULT_COUNTRY,
+  SUPPORTED_COUNTRIES,
+  inferCountryFromLocation,
+  normalizeCountry,
+} from './utils/countries.js';
 
 dotenv.config({
   path: path.resolve(process.cwd(), '.env'),
@@ -10,13 +16,7 @@ dotenv.config({
 const dataDir = path.resolve(process.cwd(), 'data');
 const searchesPath = path.join(dataDir, 'searches.json');
 
-export const SUPPORTED_COUNTRIES = ['uk', 'it'];
-export const DEFAULT_COUNTRY = 'uk';
-
-function normalizeCountry(value) {
-  const c = String(value ?? '').trim().toLowerCase();
-  return SUPPORTED_COUNTRIES.includes(c) ? c : DEFAULT_COUNTRY;
-}
+export { DEFAULT_COUNTRY, SUPPORTED_COUNTRIES, normalizeCountry };
 
 const defaultSearches = [
   {
@@ -123,18 +123,28 @@ function buildKeywords(search) {
   return [];
 }
 
+function resolveSearchCountry(search, defaults) {
+  const inferredCountry = inferCountryFromLocation(search.location)
+    ?? inferCountryFromLocation(search.source_options?.linkedin?.location)
+    ?? inferCountryFromLocation(search.source_options?.serper?.location)
+    ?? inferCountryFromLocation(search.source_options?.serper?.gl);
+
+  return normalizeCountry(search.country ?? inferredCountry ?? defaults.country);
+}
+
 function normalizeSearch(search, defaults) {
   const keywords = buildKeywords(search);
   const query = keywords.join(' OR ');
   const tags = [...defaults.tags, ...arrayOrFallback(search.tags)];
   const allowedSources = arrayOrFallback(search.allowed_sources, defaults.allowed_sources);
   const excludeKeywords = [...defaults.exclude_keywords, ...arrayOrFallback(search.exclude_keywords)];
+  const sourceOptions = search.source_options && typeof search.source_options === 'object' ? search.source_options : {};
 
   return {
     id: String(search.id),
     name: String(search.name ?? search.id),
     enabled: search.enabled !== false,
-    country: normalizeCountry(search.country ?? defaults.country),
+    country: resolveSearchCountry({ ...search, source_options: sourceOptions }, defaults),
     keywords,
     query,
     location: String(search.location ?? defaults.location),
@@ -144,7 +154,7 @@ function normalizeSearch(search, defaults) {
     tags: Array.from(new Set(tags)),
     allowed_sources: allowedSources,
     exclude_keywords: Array.from(new Set(excludeKeywords)),
-    source_options: search.source_options && typeof search.source_options === 'object' ? search.source_options : {},
+    source_options: sourceOptions,
     category: search.category ?? null,
     enrich_jobs: Boolean(search.enrich_jobs),
     require_keywords_in_page: arrayOrFallback(search.require_keywords_in_page),

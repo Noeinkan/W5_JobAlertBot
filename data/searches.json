@@ -150,6 +150,7 @@
     {
       "id": "europe_digital_construction",
       "name": "Europe – Digital Construction Leadership",
+      "country": "nl",
       "keywords": "Head of Digital Construction OR BIM Director OR Digital Construction Director OR Head of BIM OR Head of Digital Services",
       "location": "Netherlands",
       "allowed_sources": ["jooble", "serper", "linkedin"],

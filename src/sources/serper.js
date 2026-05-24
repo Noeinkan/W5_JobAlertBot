@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { appConfig, env } from '../config.js';
 import { withRetry } from '../utils/http.js';
+import { getCountryConfig, textMentionsCountry } from '../utils/countries.js';
 import { buildSalaryInfo } from '../utils/salary.js';
 import { isRelevantJob } from '../utils/relevance.js';
 import { logger } from '../utils/logger.js';
@@ -14,18 +15,28 @@ function getCacheKey(search) {
 }
 
 function serperGeoParams(search) {
-  const country = search.country ?? 'uk';
-  if (country === 'it') {
+  const countryConfig = getCountryConfig(search.country);
+  const overrideLocation = search.source_options?.serper?.location;
+
+  if (overrideLocation) {
     return {
-      location: search.source_options?.serper?.location ?? `${search.location}, Italy`,
-      gl: search.source_options?.serper?.gl ?? 'it',
-      hl: search.source_options?.serper?.hl ?? 'it',
+      location: overrideLocation,
+      gl: search.source_options?.serper?.gl ?? countryConfig.serperGl,
+      hl: search.source_options?.serper?.hl ?? countryConfig.serperHl,
     };
   }
+
+  const baseLocation = String(search.location ?? '').trim();
+  const location = !baseLocation
+    ? countryConfig.serperLocation
+    : textMentionsCountry(baseLocation, search.country)
+      ? baseLocation
+      : `${baseLocation}, ${countryConfig.serperLocation}`;
+
   return {
-    location: search.source_options?.serper?.location ?? `${search.location}, UK`,
-    gl: search.source_options?.serper?.gl ?? 'uk',
-    hl: search.source_options?.serper?.hl ?? 'en',
+    location,
+    gl: search.source_options?.serper?.gl ?? countryConfig.serperGl,
+    hl: search.source_options?.serper?.hl ?? countryConfig.serperHl,
   };
 }
 
@@ -51,7 +62,7 @@ export const serperSource = {
     let apiRows = 0;
 
     const geo = serperGeoParams(search);
-    const jobsTerm = search.country === 'it' ? 'lavoro' : 'jobs';
+  const jobsTerm = search.source_options?.serper?.jobs_term ?? getCountryConfig(search.country).serperJobsTerm;
 
     for (let page = 1; apiRows < maxRaw && page <= 40; page++) {
       const response = await withRetry(

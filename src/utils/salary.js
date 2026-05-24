@@ -1,3 +1,5 @@
+import { getCountryConfig } from './countries.js';
+
 const contractPattern = /\b(contract|freelance|outside\s+ir35|inside\s+ir35|day\s*rate|daily\s*rate|per\s*day|\/day|\bpd\b|\bp\/d\b|partita\s*iva|p\.\s*iva|piva|consulenza|al\s*giorno|\/giorno)\b/i;
 const outsideIr35Pattern = /outside\s+ir35/i;
 const insideIr35Pattern = /inside\s+ir35/i;
@@ -172,7 +174,11 @@ function hasOte(text = '') {
 
 function formatMoney(value, currency = 'GBP') {
   if (!Number.isFinite(value)) return null;
-  const locale = currency === 'EUR' ? 'it-IT' : 'en-GB';
+  const locale = currency === 'EUR'
+    ? 'it-IT'
+    : currency === 'DKK'
+      ? 'da-DK'
+      : 'en-GB';
   return new Intl.NumberFormat(locale, {
     style: 'currency',
     currency,
@@ -194,7 +200,7 @@ export function buildSalaryInfo({
 } = {}) {
   const combinedText = [title, description, ...(extensions ?? [])].filter(Boolean).join(' | ');
   const detectedCurrency = detectCurrency(combinedText);
-  const currency = detectedCurrency ?? (country === 'it' ? 'EUR' : 'GBP');
+  const currency = detectedCurrency ?? getCountryConfig(country).defaultCurrency;
 
   const explicitRange =
     findRange(combinedText, currency)

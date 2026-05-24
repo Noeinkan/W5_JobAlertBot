@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { appConfig, env } from '../config.js';
 import { withRetry } from '../utils/http.js';
+import { getCountryConfig } from '../utils/countries.js';
 import { buildSalaryInfo } from '../utils/salary.js';
 import { isRelevantJob } from '../utils/relevance.js';
 import { logger } from '../utils/logger.js';
@@ -44,7 +45,7 @@ export const adzunaSource = {
     const jobs = [];
     let fetched = 0;
 
-    const countryCode = search.country === 'it' ? 'it' : 'gb';
+    const countryCode = getCountryConfig(search.country).adzunaCode ?? 'gb';
 
     for (let page = 1; fetched < maxRaw; page++) {
       const url = `https://api.adzuna.com/v1/api/jobs/${countryCode}/search/${page}`;

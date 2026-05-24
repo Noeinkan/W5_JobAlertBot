@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { appConfig } from '../config.js';
 import { withRetry } from '../utils/http.js';
+import { getCountryConfig, textMentionsCountry } from '../utils/countries.js';
 import { buildSalaryInfo } from '../utils/salary.js';
 import { logger } from '../utils/logger.js';
 import { isRelevantJob } from '../utils/relevance.js';
@@ -37,23 +38,13 @@ function linkedInGeo(search) {
   const override = search.source_options?.linkedin?.location;
   if (override) return override;
 
-  const country = search.country ?? 'uk';
-  const countryLabel = country === 'it' ? 'Italia' : 'United Kingdom';
-  const countryAliases = country === 'it'
-    ? /^(italia|italy)$/i
-    : /^(united kingdom|great britain|uk)$/i;
-  const countrySuffix = country === 'it'
-    ? /,\s*(italia|italy)$/i
-    : /,\s*(united kingdom|uk)$/i;
+  const countryConfig = getCountryConfig(search.country);
+  const countryLabel = countryConfig.linkedinLabel;
 
   const loc = String(search.location ?? '').trim();
   if (!loc) return countryLabel;
 
-  if (countryAliases.test(loc)) {
-    return countryLabel;
-  }
-
-  if (countrySuffix.test(loc)) {
+  if (textMentionsCountry(loc, search.country)) {
     return loc;
   }
 
@@ -66,6 +57,7 @@ export const linkedinSource = {
     return true;
   },
   async fetchJobs(search) {
+    const countryConfig = getCountryConfig(search.country);
     const geo = linkedInGeo(search);
 
     const maxCards = maxRawListingsPerQuery();
@@ -84,7 +76,7 @@ export const linkedinSource = {
           headers: {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
             Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-            'Accept-Language': search.country === 'it' ? 'it-IT,it;q=0.9,en;q=0.7' : 'en-GB,en;q=0.9',
+            'Accept-Language': countryConfig.linkedinAcceptLanguage,
           },
           responseType: 'text',
         }),
@@ -108,7 +100,7 @@ export const linkedinSource = {
       if (!isRelevantJob(title, snippet)) continue;
 
       const company = extractText(card, 'base-search-card__subtitle') ?? 'Unknown company';
-      const location = extractText(card, 'job-search-card__location') ?? search.location ?? (search.country === 'it' ? 'Italia' : 'UK');
+  const location = extractText(card, 'job-search-card__location') ?? search.location ?? countryConfig.linkedinLabel;
       const rawUrl = extractHref(card, 'base-card__full-link') ?? extractHref(card, 'base-card');
       const url = rawUrl ? rawUrl.split('?')[0] : null;
       if (url && seenUrls.has(url)) continue;
