@@ -21,7 +21,7 @@ import {
   startBot,
 } from './bot-process.js';
 import { tokenOk } from './auth.js';
-import { env } from '../config.js';
+import { appConfig, env } from '../config.js';
 
 function readProfileSummary() {
   const profilePath = env.profileFitPath;
@@ -93,6 +93,7 @@ function buildDashboardHtml(basePath, profileFitEnabled) {
       <span class="chev">▶</span>
       <h2><span class="log-dot"></span>Bot log</h2>
       <span class="section-meta">click to expand · streams while a run is active</span>
+      <button id="downloadLogBtn" class="log-download-btn" type="button" disabled>Download log</button>
     </div>
     <div class="section-body">
       <pre id="logPanel"></pre>
@@ -196,6 +197,22 @@ export function createDashboardServer({ port, host, token, basePath }) {
       const sseClients = getSseClients();
       sseClients.add(res);
       req.on('close', () => sseClients.delete(res));
+      return;
+    }
+
+    if (pathname === '/api/bot/log' && req.method === 'GET') {
+      if (!tokenOk(req, res, token)) return;
+      if (!fs.existsSync(appConfig.logFilePath)) {
+        res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+        res.end('Bot log not found');
+        return;
+      }
+      res.writeHead(200, {
+        'Content-Type': 'text/plain; charset=utf-8',
+        'Content-Disposition': `attachment; filename="${path.basename(appConfig.logFilePath)}"`,
+        'Cache-Control': 'no-store',
+      });
+      fs.createReadStream(appConfig.logFilePath).pipe(res);
       return;
     }
 

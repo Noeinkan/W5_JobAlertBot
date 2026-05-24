@@ -2777,7 +2777,61 @@ const stateBadge    = document.getElementById('botStateBadge');
 const runOnceBtn    = document.getElementById('runOnceBtn');
 const startBotBtn   = document.getElementById('startBotBtn');
 const stopBotBtn    = document.getElementById('stopBotBtn');
+const downloadLogBtn = document.getElementById('downloadLogBtn');
 let   needsRefresh  = false;
+
+function readAttachmentFilename(res, fallback) {
+  const disposition = res.headers.get('Content-Disposition') || '';
+  const match = disposition.match(/filename="?([^";]+)"?/i);
+  return match && match[1] ? match[1] : fallback;
+}
+
+function saveBlob(blob, filename) {
+  const href = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = href;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(href);
+}
+
+function updateDownloadLogButton() {
+  if (!downloadLogBtn) return;
+  downloadLogBtn.disabled = false;
+}
+
+function downloadCurrentLog() {
+  const content = logPanel.textContent;
+  if (!content) return;
+
+  const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  saveBlob(blob, 'job-alert-bot-' + stamp + '.log');
+}
+
+async function downloadServerLog() {
+  const res = await fetchWithDashboardToken(API_BASE + '/api/bot/log');
+  if (!res.ok) {
+    const message = await res.text();
+    throw new Error(message || 'Failed to download bot log');
+  }
+  const blob = await res.blob();
+  saveBlob(blob, readAttachmentFilename(res, 'job-alert-bot.log'));
+}
+
+async function handleDownloadLog() {
+  try {
+    await downloadServerLog();
+  } catch (err) {
+    if (logPanel.textContent) {
+      downloadCurrentLog();
+      return;
+    }
+    alert(err.message);
+  }
+}
 
 function applyStatus(s) {
   stateBadge.className = s.state;
@@ -2828,6 +2882,7 @@ function showLogSection() {
 
 runOnceBtn.addEventListener('click', () => {
   logPanel.textContent = '';
+  updateDownloadLogButton();
   showLogSection();
   needsRefresh = true;
   botAction('start-once');
@@ -2835,11 +2890,20 @@ runOnceBtn.addEventListener('click', () => {
 
 startBotBtn.addEventListener('click', () => {
   logPanel.textContent = '';
+  updateDownloadLogButton();
   showLogSection();
   botAction('start-daemon');
 });
 
 stopBotBtn.addEventListener('click', () => botAction('stop'));
+
+if (downloadLogBtn) {
+  downloadLogBtn.addEventListener('click', async e => {
+    e.stopPropagation();
+    await handleDownloadLog();
+  });
+  updateDownloadLogButton();
+}
 
 // SSE connection
 function connectSSE() {
@@ -2849,6 +2913,7 @@ function connectSSE() {
     if (msg.type === 'status') applyStatus(msg.status);
     if (msg.type === 'log') {
       logPanel.textContent += msg.line;
+      updateDownloadLogButton();
       logPanel.scrollTop = logPanel.scrollHeight;
     }
   };
