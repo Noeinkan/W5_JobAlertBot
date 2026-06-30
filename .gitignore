@@ -8,3 +8,6 @@ logs/
 # RTK (Rust Token Killer) — local-only Copilot integration
 .github/copilot-instructions.md
 .github/hooks/
+
+# Local scratch / ad-hoc files (queries, debug dumps, one-off notes)
+.scratch/

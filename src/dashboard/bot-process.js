@@ -2,6 +2,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { spawn, execFile } from 'child_process';
 import fs from 'fs';
+import { randomUUID } from 'crypto';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.join(__dirname, '..', '..');
@@ -166,6 +167,30 @@ export async function stopBot() {
 
 export function getBotStatus() {
   return botStatus;
+}
+
+/**
+ * Spawn `scripts/send-pending.js` once and stream its stdout lines via SSE.
+ * Returns a small wrapper compatible with `botProc` semantics.
+ */
+export function runSendPending({ trigger = 'dashboard' } = {}) {
+  if (botProc) return { ok: false, reason: 'bot_running' };
+  const child = spawn('node', ['scripts/send-pending.js', '--trigger', trigger], {
+    cwd: projectRoot,
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  // Pretend this is the bot's "send-pending" task so the dashboard can label it.
+  setStatus({ state: 'running', mode: 'send-pending', startedAt: new Date().toISOString(), managedBy: 'spawn' });
+  const onData = chunk => pushSSE({ type: 'log', line: chunk.toString() });
+  child.stdout.on('data', onData);
+  child.stderr.on('data', onData);
+  child.on('close', code => {
+    botProc = null;
+    setStatus({ state: code === 0 ? 'done' : 'error', mode: 'send-pending', exitCode: code });
+  });
+  // Mirror just enough of the botProc interface for the kill() path if hit mid-flight.
+  botProc = { kill: () => child.kill('SIGTERM') };
+  return { ok: true, pid: child.pid, jobId: randomUUID() };
 }
 
 // Backwards-compat: server.js imports getBotProc() to gate /api/bot/stop

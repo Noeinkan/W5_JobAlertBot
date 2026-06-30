@@ -22,6 +22,7 @@ import {
   getBotStatus,
   getSseClients,
   readLiveStatus,
+  runSendPending,
   startBot,
   stopBot,
 } from './bot-process.js';
@@ -90,6 +91,7 @@ function buildDashboardHtml(basePath, profileFitEnabled) {
     <button id="runOnceBtn" class="run-btn" title="Run one fetch cycle now">▶ Run Once</button>
     <button id="startBotBtn" class="run-btn" title="Start the bot scheduler (delegates to PM2 on prod)">▶ Start Bot</button>
     <button id="stopBotBtn"  class="run-btn stop" title="Stop the running process" style="display:none">■ Stop</button>
+    <button id="sendPendingBtn" class="run-btn" title="Post already-pending jobs to Discord right now (without re-running sources)">📣 Send pending now</button>
     <button id="diagnoseBtn" class="run-btn ghost" title="Explain why no jobs are being posted" style="margin-left:.25rem">🩺 Diagnose</button>
   </div>
 </header>
@@ -258,6 +260,16 @@ export function createDashboardServer({ port, host, token, basePath }) {
           alreadySent:   db.prepare("SELECT COUNT(*) AS n FROM jobs WHERE notified = 1").get().n,
           byFilter:      db.prepare("SELECT filter_reason AS reason, COUNT(*) AS n FROM jobs WHERE filter_reason IS NOT NULL GROUP BY filter_reason ORDER BY n DESC LIMIT 10").all(),
           recentRuns:    db.prepare("SELECT ran_at AS ranAt, source, search_id AS searchId, results_found AS fetched, new_jobs AS news FROM run_log ORDER BY id DESC LIMIT 5").all(),
+          // Most-recent per-source tally: how many distinct runs returned 0 in the last 24h.
+          silentSources: db.prepare(`
+            SELECT r.source AS source, COUNT(*) AS emptyRuns
+            FROM run_log r
+            WHERE r.ran_at >= datetime('now', '-1 day')
+              AND r.results_found = 0
+            GROUP BY r.source
+            ORDER BY emptyRuns DESC
+            LIMIT 12
+          `).all(),
         };
         const lastNewJob = db.prepare("SELECT found_at, source, title FROM jobs WHERE notified = 0 AND filter_reason IS NULL ORDER BY found_at DESC LIMIT 1").get();
         const diagnosis = {
@@ -273,6 +285,7 @@ export function createDashboardServer({ port, host, token, basePath }) {
           },
           counts,
           lastNewJob: lastNewJob || null,
+          silentSources: counts.silentSources || [],
           hints: [],
         };
         if (!diagnosis.botRunning) {
@@ -306,6 +319,20 @@ export function createDashboardServer({ port, host, token, basePath }) {
       try {
         const result = await stopBot();
         res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(result));
+      } catch (e) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: false, error: e.message }));
+      }
+      return;
+    }
+
+    if (pathname === '/api/bot/send-pending' && req.method === 'POST') {
+      if (!tokenOk(req, res, token)) return;
+      try {
+        const result = runSendPending({ trigger: 'dashboard-send-pending' });
+        const code = result.ok ? 200 : 409;
+        res.writeHead(code, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify(result));
       } catch (e) {
         res.writeHead(500, { 'Content-Type': 'application/json' });

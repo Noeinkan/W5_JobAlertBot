@@ -60,6 +60,20 @@ import { createRunCsvLog } from './utils/run_log_csv.js';
 import { loadProfileFitConfig, scoreProfileFit } from './utils/profileFit.js';
 
 const client = hasDiscordBotConfig() ? createDiscordClient() : null;
+const disabledSources = new Set(
+  String(process.env.DISABLED_SOURCES ?? '')
+    .split(/[\s,]+/)
+    .map(s => s.trim().toLowerCase())
+    .filter(Boolean)
+);
+function isSourceEnabled(s) {
+  if (s?.isConfigured && !s.isConfigured()) return false;
+  if (s?.name && disabledSources.has(s.name)) return false;
+  return true;
+}
+if (disabledSources.size > 0) {
+  logger.info('Disabled sources via env', { names: [...disabledSources].sort() });
+}
 const sourceClients = [
   adzunaSource,
   advancetrsSource,
@@ -85,7 +99,7 @@ const sourceClients = [
   serperSource,
   technojobsSource,
   totaljobsSource,
-];
+].filter(isSourceEnabled);
 
 let isRunInProgress = false;
 let startupMessageSent = false;
@@ -480,6 +494,8 @@ async function runSearchCycle(trigger = 'scheduled') {
       newJobs: newJobs.length,
       failedSources,
       finishedAt: new Date().toISOString(),
+      sentToDiscord: pendingJobs.length,
+      notifiedAt: pendingJobs.length ? new Date().toISOString() : lastRunSummary?.notifiedAt || null,
     };
 
     return {
@@ -551,10 +567,10 @@ async function handleReady() {
 
   if (!startupMessageSent) {
     if (hasDiscordWebhookConfig()) {
-      await sendStartupMessageWebhook(env.discordWebhookUrl, getNextRunText(), getEnabledSourceNames());
+      await sendStartupMessageWebhook(env.discordWebhookUrl, getNextRunText(), getEnabledSourceNames(), lastRunSummary);
     } else {
       const channel = await getAlertChannel(client);
-      await sendStartupMessage(channel, getNextRunText(), getEnabledSourceNames());
+      await sendStartupMessage(channel, getNextRunText(), getEnabledSourceNames(), lastRunSummary);
     }
     startupMessageSent = true;
   }

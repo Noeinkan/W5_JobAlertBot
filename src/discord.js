@@ -201,33 +201,57 @@ export async function sendJobAlertsWebhook(webhookUrl, jobs) {
   }
 }
 
-export async function sendStartupMessage(channel, nextRunText, enabledSources) {
+export async function sendStartupMessage(channel, nextRunText, enabledSources, lastRunSummary) {
+  const lines = [
+    'The bot is connected and ready.',
+    `Next scheduled run: **${nextRunText}**`,
+    `Enabled sources: ${enabledSources.join(', ') || 'none'}`,
+  ];
+  if (lastRunSummary?.notifiedAt) {
+    lines.push(
+      `Last sent: **${lastRunSummary.sentToDiscord} jobs** at ${formatLondonTime(lastRunSummary.notifiedAt)} (${lastRunSummary.trigger || 'previous run'}).`
+    );
+  }
   const embed = new EmbedBuilder()
     .setColor(0xf1c40f)
     .setTitle('Job Alert Bot Online')
-    .setDescription([
-      'The bot is connected and ready.',
-      `Next scheduled run: **${nextRunText}**`,
-      `Enabled sources: ${enabledSources.join(', ') || 'none'}`,
-    ].join('\n'));
+    .setDescription(lines.join('\n'));
 
   await channel.send({ embeds: [embed] });
 }
 
-export async function sendStartupMessageWebhook(webhookUrl, nextRunText, enabledSources) {
+export async function sendStartupMessageWebhook(webhookUrl, nextRunText, enabledSources, lastRunSummary) {
+  const lines = [
+    'The bot is connected and ready.',
+    `Next scheduled run: **${nextRunText}**`,
+    `Enabled sources: ${enabledSources.join(', ') || 'none'}`,
+  ];
+  if (lastRunSummary?.notifiedAt) {
+    lines.push(
+      `Last sent: **${lastRunSummary.sentToDiscord} jobs** at ${formatLondonTime(lastRunSummary.notifiedAt)} (${lastRunSummary.trigger || 'previous run'}).`
+    );
+  }
   const embed = new EmbedBuilder()
     .setColor(0xf1c40f)
     .setTitle('Job Alert Bot Online')
-    .setDescription([
-      'The bot is connected and ready.',
-      `Next scheduled run: **${nextRunText}**`,
-      `Enabled sources: ${enabledSources.join(', ') || 'none'}`,
-    ].join('\n'));
+    .setDescription(lines.join('\n'));
 
   await postWebhookPayload(webhookUrl, {
     embeds: [embed.toJSON()],
     allowed_mentions: { parse: [] },
   });
+}
+
+function formatLondonTime(iso) {
+  try {
+    return new Date(iso).toLocaleString('en-GB', {
+      timeZone: 'Europe/London',
+      hour: '2-digit', minute: '2-digit', day: '2-digit', month: 'short',
+      hour12: false,
+    });
+  } catch {
+    return iso;
+  }
 }
 
 export function buildStatsEmbed(stats) {

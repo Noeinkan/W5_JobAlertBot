@@ -2982,6 +2982,7 @@ const stateBadge    = document.getElementById('botStateBadge');
 const runOnceBtn    = document.getElementById('runOnceBtn');
 const startBotBtn   = document.getElementById('startBotBtn');
 const stopBotBtn    = document.getElementById('stopBotBtn');
+const sendPendingBtn = document.getElementById('sendPendingBtn');
 const downloadLogBtn = document.getElementById('downloadLogBtn');
 let   needsRefresh  = false;
 
@@ -3112,6 +3113,38 @@ startBotBtn.addEventListener('click', () => {
 
 stopBotBtn.addEventListener('click', () => botAction('stop'));
 
+if (sendPendingBtn) {
+  sendPendingBtn.addEventListener('click', async () => {
+    sendPendingBtn.disabled = true;
+    const prev = sendPendingBtn.textContent;
+    sendPendingBtn.textContent = '📣 Posting…';
+    showLogSection();
+    logPanel.textContent = '';
+    try {
+      const res = await fetchWithDashboardToken(API_BASE + '/api/bot/send-pending', { method: 'POST' });
+      const txt = await res.text();
+      let body;
+      try { body = JSON.parse(txt); } catch { body = { raw: txt }; }
+      if (!res.ok) {
+        alert('Send pending failed: ' + (body.error || body.raw || ('HTTP ' + res.status)));
+      } else {
+        needsRefresh = true;
+        // brief summary so the user sees what happened without leaving the page
+        const sent = body.sent ?? body.total ?? 0;
+        const mode = body.mode || 'unknown';
+        alert((sent > 0
+          ? `✅ Sent ${sent} pending job${sent === 1 ? '' : 's'} via ${mode}.`
+          : `ℹ Nothing pending. (mode=${mode})`));
+      }
+    } catch (e) {
+      alert('Send pending error: ' + (e && e.message || e));
+    } finally {
+      sendPendingBtn.disabled = false;
+      sendPendingBtn.textContent = prev;
+    }
+  });
+}
+
 const diagnoseBtn = document.getElementById('diagnoseBtn');
 if (diagnoseBtn) {
   diagnoseBtn.addEventListener('click', showDiagnose);
@@ -3133,6 +3166,9 @@ async function showDiagnose() {
     lines.push(`Jobs: total=${c.totalJobs ?? 0} pending=${c.pending ?? 0} unnotified=${c.unnotified ?? 0} already-sent=${c.alreadySent ?? 0} filtered=${c.filtered ?? 0}`);
     if (Array.isArray(c.byFilter) && c.byFilter.length) {
       lines.push('Top filter reasons: ' + c.byFilter.map(r => `${r.reason}=${r.n}`).join(', '));
+    }
+    if (Array.isArray(d.silentSources) && d.silentSources.length) {
+      lines.push('Silent sources (last 24h, 0-result runs): ' + d.silentSources.map(s => `${s.source}=${s.emptyRuns}`).join(', '));
     }
     if (d.lastNewJob) {
       lines.push(`Last new unfiltered job: ${d.lastNewJob.found_at} — ${d.lastNewJob.source} "${d.lastNewJob.title}"`);
