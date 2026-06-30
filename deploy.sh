@@ -32,7 +32,7 @@ echo "→ Uploading code …"
 tar -C "$LOCAL" \
     --exclude='data/*.db' --exclude='data/*.db-*' \
     -cf - \
-    src data test package.json package-lock.json ecosystem.config.cjs \
+    src data scripts test package.json package-lock.json ecosystem.config.cjs \
   | ssh "$SERVER" "tar -C $REMOTE -xf -"
 
 # ── 3. Optionally upload .env ─────────────────────────────────────────────────
