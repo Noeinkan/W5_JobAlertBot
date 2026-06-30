@@ -4,11 +4,6 @@ import { appConfig } from '../config.js';
 import { buildSalaryInfo } from '../utils/salary.js';
 import { isRelevantJob } from '../utils/relevance.js';
 import { logger } from '../utils/logger.js';
-import {
-  extractJobsFromNextDataHtml,
-  pickNested,
-  pickString,
-} from './next_data_extract.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -22,63 +17,110 @@ const curlArgs = [
   '--header', 'Accept-Language: en-GB,en;q=0.9',
 ];
 
-function buildSearchUrl(search) {
-  const params = new URLSearchParams({
-    term: search.query,
-    location: search.location,
-    radius: String(search.distance_from_location ?? 20),
-  });
-  return `https://www.hays.co.uk/jobs/search?${params.toString()}`;
+function pickKeyword(search) {
+  const first = Array.isArray(search.keywords) ? search.keywords[0] : null;
+  return (first && first.trim()) || search.query || '';
 }
 
-function normalizeJob(raw, search) {
-  const title = pickNested(raw, ['title', 'jobTitle', 'name']);
-  const company = pickNested(raw, ['employer', 'clientName', 'company.name', 'companyName']);
-  const location = pickNested(raw, ['location.name', 'location', 'town', 'city']);
-  const salaryText = pickNested(raw, ['salary', 'salaryText', 'payRate']);
-  const url = pickNested(raw, ['url', 'jobUrl', 'link', 'applyUrl']);
-  const postedRaw = pickNested(raw, ['publishedDate', 'datePosted', 'postedDate', 'createdDate']);
+function buildSearchUrl(search) {
+  const params = new URLSearchParams({
+    q: pickKeyword(search),
+    location: search.location,
+    sortType: '0',
+    jobType: '-1',
+    flexiWorkType: '-1',
+    payTypefacet: '-1',
+    minPay: '-1',
+    maxPay: '-1',
+    jobSource: 'HaysGCJ',
+  });
+  return `https://www.hays.co.uk/job-search?${params.toString()}`;
+}
 
-  let postedAt = null;
-  if (postedRaw) {
-    try {
-      postedAt = new Date(postedRaw).toISOString();
-    } catch {
-      // ignore
+function stripText(html) {
+  return String(html ?? '').replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
+}
+
+function parsePostedAt(raw) {
+  if (!raw) return null;
+  const normalized = String(raw).trim();
+  if (/posted today/i.test(normalized)) {
+    return new Date().toISOString();
+  }
+  const dmy = normalized.match(/^(\d{2})-(\d{2})-(\d{4})$/);
+  if (dmy) {
+    const [, day, month, year] = dmy;
+    return new Date(`${year}-${month}-${day}T00:00:00Z`).toISOString();
+  }
+  try {
+    return new Date(normalized).toISOString();
+  } catch {
+    return null;
+  }
+}
+
+function slugify(...parts) {
+  return parts
+    .join('-')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '');
+}
+
+function buildHaysJobUrl(html, jobId, jobReference, title, location) {
+  if (jobId && html) {
+    const escapedId = jobId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const pageMatch = html.match(new RegExp(`href="(/job-detail/[^"]*applyId=${escapedId}[^"]*)"`));
+    if (pageMatch) {
+      return `https://www.hays.co.uk${pageMatch[1].replace(/&amp;/g, '&')}`;
     }
   }
 
-  const externalId = pickString(
-    raw?.id,
-    raw?.jobRef,
-    raw?.reference,
-    raw?.jobId,
-    url,
-    `${title}-${company}`,
-  );
+  if (jobReference && jobId) {
+    const slug = slugify(title, location);
+    return `https://www.hays.co.uk/job-detail/${slug}_${jobReference}?applyId=${jobId}`;
+  }
 
-  const descriptionParts = [
-    pickNested(raw, ['description', 'summary']),
-    salaryText,
-  ].filter(Boolean);
+  return null;
+}
 
-  return {
-    externalId,
-    title,
-    company,
-    location: location || search.location,
-    salaryText,
-    url,
-    postedAt,
-    description: descriptionParts.join('\n'),
-    searchId: search.id,
-    rawContractHint: pickNested(raw, ['employmentType', 'type']),
-  };
+function parseHaysJobs(html) {
+  const jobs = [];
+  const cardRe = /<lib-sb-job-card[\s\S]*?<h4[^>]*>\s*([^<]+?)\s*<\/h4>[\s\S]*?<\/lib-sb-job-card>\s*<div[^>]*id="analytics-field"[\s\S]*?id="JobId"[^>]*>([^<]+)[\s\S]*?id="JobReference"[^>]*>([^<]+)/g;
+
+  for (const match of html.matchAll(cardRe)) {
+    const title = stripText(match[1]);
+    const jobId = stripText(match[2]);
+    const jobReference = stripText(match[3]);
+    if (!title) continue;
+
+    const cardHtml = match[0];
+    const locationMatch = cardHtml.match(/<\/svg>\s*([^<]+?)\s*<\/li>/);
+    const salaryMatch = cardHtml.match(/<\/div>\s*([^<]+?)\s*<\/li>/);
+    const dateMatch = cardHtml.match(/class="text-black fs-300"[^>]*>([^<]+)/);
+
+    const location = stripText(locationMatch?.[1] ?? '');
+    const salaryText = stripText(salaryMatch?.[1] ?? '');
+    const url = buildHaysJobUrl(html, jobId, jobReference, title, location);
+
+    jobs.push({
+      externalId: jobId || `${title}-${location}`,
+      title,
+      location,
+      salaryText,
+      url,
+      postedAt: parsePostedAt(dateMatch?.[1]),
+      description: [title, location, salaryText].filter(Boolean).join(' | '),
+    });
+  }
+
+  return jobs;
 }
 
 async function fetchHtml(url) {
   const { stdout } = await execFileAsync('curl', [...curlArgs, url], {
-    maxBuffer: 10 * 1024 * 1024,
+    maxBuffer: 15 * 1024 * 1024,
   });
   return stdout;
 }
@@ -99,39 +141,31 @@ export const haysSource = {
       return [];
     }
 
-    const rawJobs = extractJobsFromNextDataHtml(html, { source: 'hays', searchId: search.id });
+    const rawJobs = parseHaysJobs(html);
     const jobs = [];
 
     for (const raw of rawJobs) {
-      const normalized = normalizeJob(raw, search);
-      const { title, description } = normalized;
-
-      if (!title) continue;
+      const { title, description } = raw;
 
       if (!isRelevantJob(title, description)) {
         logger.debug('Hays job filtered by relevance', { title, searchId: search.id });
         continue;
       }
 
-      const salaryInfo = buildSalaryInfo({
-        title,
-        description,
-      });
-
-      const isContractType = /contract|temporary|temp/i.test(normalized.rawContractHint ?? '');
+      const salaryInfo = buildSalaryInfo({ title, description });
 
       jobs.push({
-        externalId: normalized.externalId,
+        externalId: raw.externalId,
         source: 'hays',
         title,
-        company: normalized.company || 'Unknown company',
-        location: normalized.location,
+        company: 'Hays',
+        location: raw.location || search.location,
         salaryMin: salaryInfo.salaryMin,
         salaryMax: salaryInfo.salaryMax,
-        salaryText: salaryInfo.salaryText,
-        isContract: salaryInfo.isContract || isContractType,
-        url: normalized.url || url,
-        postedAt: normalized.postedAt,
+        salaryText: salaryInfo.salaryText || raw.salaryText,
+        isContract: salaryInfo.isContract,
+        url: raw.url || url,
+        postedAt: raw.postedAt,
         searchId: search.id,
         description,
       });

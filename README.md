@@ -100,7 +100,7 @@ cp .env.example .env
 - `SERPER_API_KEY` — required for Serper
 - `JOOBLE_API_KEY` — optional; email api@jooble.org for a free key. Aggregates Totaljobs, CV-Library, CWJobs, and 100+ UK boards
 - `GUARDIAN_API_KEY` — optional; free key from open-platform.theguardian.com. Good for public sector digital/BIM roles
-- LinkedIn, Careerjet, JobServe, Construction Enquirer, CV-Library, Rise Technical, CIOB Jobs, BIM+ Jobs, Technojobs, Totaljobs, CWJobs, Hays, and Michael Page require no API key and are always enabled (scraped sources may fail behind bot protection)
+- LinkedIn, Careerjet, JobServe, Construction Enquirer, CV-Library, Rise Technical, CIOB Jobs, BIM+ Jobs, Technojobs, Totaljobs, CWJobs, Hays, Michael Page, Matchtech, Morson, Advance TRS, and ICE Recruit require no API key and are always enabled (scraped sources may fail behind bot protection; Matchtech uses headless Chromium via Playwright when `BROWSER_FETCH_ENABLED` is true)
 - `MONSTER_CLIENT_ID` + `MONSTER_CLIENT_SECRET` — optional [Monster partner API](https://partner.monster.com/) (OAuth client credentials)
 - `GLASSDOOR_PARTNER_ID` + `GLASSDOOR_PARTNER_KEY` — optional [Glassdoor partner API](https://www.glassdoor.com/developer/index.htm)
 
@@ -121,6 +121,7 @@ Each job can be scored against [`data/profile.json`](data/profile.json) after th
 - `PROFILE_FIT_ENABLED`: **on by default** (unset or empty). Set to `false`, `0`, `no`, or `off` to disable CV-aligned scoring for the bot process.
 - `PROFILE_FIT_PATH`: optional path to an alternate profile JSON (defaults to `data/profile.json` relative to the project root)
 - `PROFILE_FIT_STRICT`: set to `true`, `1`, `yes`, or `on` so **only Profile Green** jobs can notify on Discord — **Profile Amber** is treated like Red (`filtered_profile_strict`). Default: off (Amber still notifies).
+- `BROWSER_FETCH_ENABLED`: set to `false`, `0`, `no`, or `off` to disable headless Chromium fetches (used by Matchtech). Default: on. After `npm install`, run `npx playwright install chromium` once per machine (production deploy script does this when `package-lock.json` changes).
 
 The **dashboard** shows a **Profile fit** strip at the top (north star, config path, on/off, strict mode) and table columns **Profile** / **Prof score** / **Prof reason** ahead of lexicon RAG when viewing runs or all jobs.
 
@@ -245,7 +246,7 @@ Supported fields:
 - `min_salary`: minimum salary filter
 - `contract_only`: keep only roles detected as contract roles
 - `tags`: hashtags added to embeds
-- `allowed_sources`: subset of `adzuna`, `reed`, `serper`, `linkedin`, `jooble`, `careerjet`, `guardian`, `jobserve`, `construction_enquirer`, `cvlibrary`, `risetechnical`, `ciob`, `bimplus`, `technojobs`, `totaljobs`, `cwjobs`, `hays`, `michaelpage`, `monster`, `glassdoor`
+- `allowed_sources`: subset of `adzuna`, `reed`, `serper`, `linkedin`, `jooble`, `careerjet`, `guardian`, `jobserve`, `construction_enquirer`, `cvlibrary`, `risetechnical`, `ciob`, `bimplus`, `technojobs`, `totaljobs`, `cwjobs`, `hays`, `michaelpage`, `matchtech`, `morson`, `advancetrs`, `icerecruit`, `monster`, `glassdoor`
 - `exclude_keywords`: post-fetch content filter
 - `distance_from_location`: used by Reed
 - `source_options`: source-specific overrides
@@ -257,7 +258,7 @@ Example:
 	"defaults": {
 		"location": "London",
 		"distance_from_location": 10,
-		"allowed_sources": ["adzuna", "reed", "serper", "linkedin", "jooble", "careerjet", "guardian", "jobserve", "construction_enquirer", "cvlibrary", "risetechnical", "ciob", "bimplus", "technojobs", "totaljobs", "cwjobs", "hays", "michaelpage", "monster", "glassdoor"],
+		"allowed_sources": ["adzuna", "reed", "serper", "linkedin", "jooble", "careerjet", "guardian", "jobserve", "construction_enquirer", "cvlibrary", "risetechnical", "ciob", "bimplus", "technojobs", "totaljobs", "cwjobs", "hays", "michaelpage", "matchtech", "morson", "advancetrs", "icerecruit", "monster", "glassdoor"],
 		"exclude_keywords": [],
 		"tags": []
 	},
@@ -268,7 +269,7 @@ Example:
 			"enabled": true,
 			"keywords": ["BIM Manager contract", "Information Manager contract infrastructure"],
 			"contract_only": true,
-			"allowed_sources": ["adzuna", "reed", "serper", "linkedin", "jooble", "careerjet", "guardian", "jobserve", "construction_enquirer", "cvlibrary", "risetechnical", "ciob", "bimplus", "technojobs", "totaljobs", "cwjobs", "hays", "michaelpage", "monster", "glassdoor"],
+			"allowed_sources": ["adzuna", "reed", "serper", "linkedin", "jooble", "careerjet", "guardian", "jobserve", "construction_enquirer", "cvlibrary", "risetechnical", "ciob", "bimplus", "technojobs", "totaljobs", "cwjobs", "hays", "michaelpage", "matchtech", "morson", "advancetrs", "icerecruit", "monster", "glassdoor"],
 			"exclude_keywords": ["graduate", "junior", "trainee"],
 			"source_options": {
 				"adzuna": {

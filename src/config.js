@@ -201,6 +201,13 @@ export const env = {
   ollamaModel: process.env.OLLAMA_MODEL ?? 'qwen2.5:1.5b-instruct-q4_K_M',
   ollamaTimeoutMs: Number.parseInt(process.env.OLLAMA_TIMEOUT_MS ?? '3000', 10),
   ollamaMaxTokens: Number.parseInt(process.env.OLLAMA_MAX_TOKENS ?? '60', 10),
+  browserFetchEnabled: (() => {
+    const v = process.env.BROWSER_FETCH_ENABLED;
+    if (v === undefined || v === '') return true;
+    const s = String(v).toLowerCase();
+    if (['false', '0', 'no', 'off'].includes(s)) return false;
+    return true;
+  })(),
 };
 
 function resolveSourceMaxResultsPerQuery() {
@@ -264,6 +271,10 @@ export function getConfiguredSources() {
     cwjobs: true,
     hays: true,
     michaelpage: true,
+    matchtech: true,
+    morson: true,
+    advancetrs: true,
+    icerecruit: true,
     monster: Boolean(env.monsterClientId && env.monsterClientSecret),
     glassdoor: Boolean(env.glassdoorPartnerId && env.glassdoorPartnerKey),
   };
@@ -319,6 +330,10 @@ export function getSourceLabel(source) {
     cwjobs: 'CWJobs',
     hays: 'Hays',
     michaelpage: 'Michael Page',
+    matchtech: 'Matchtech',
+    morson: 'Morson',
+    advancetrs: 'Advance TRS',
+    icerecruit: 'ICE Recruit',
     monster: 'Monster',
     glassdoor: 'Glassdoor',
   }[source] ?? source;

@@ -25,6 +25,7 @@ import {
   sendStartupMessageWebhook,
 } from './discord.js';
 import { adzunaSource } from './sources/adzuna.js';
+import { advancetrsSource } from './sources/advancetrs.js';
 import { bimplusSource } from './sources/bimplus.js';
 import { careerjetSource } from './sources/careerjet.js';
 import { ciobSource } from './sources/ciob.js';
@@ -34,11 +35,14 @@ import { cvlibrarySource } from './sources/cvlibrary.js';
 import { glassdoorSource } from './sources/glassdoor.js';
 import { guardianSource } from './sources/guardian.js';
 import { haysSource } from './sources/hays.js';
+import { icerecruitSource } from './sources/icerecruit.js';
 import { joobleSource } from './sources/jooble.js';
 import { jobserveSource } from './sources/jobserve.js';
 import { linkedinSource } from './sources/linkedin.js';
+import { matchtechSource } from './sources/matchtech.js';
 import { michaelpageSource } from './sources/michaelpage.js';
 import { monsterSource } from './sources/monster.js';
+import { morsonSource } from './sources/morson.js';
 import { reedSource } from './sources/reed.js';
 import { risetechnicalSource } from './sources/risetechnical.js';
 import { serperSource } from './sources/serper.js';
@@ -58,6 +62,7 @@ import { loadProfileFitConfig, scoreProfileFit } from './utils/profileFit.js';
 const client = hasDiscordBotConfig() ? createDiscordClient() : null;
 const sourceClients = [
   adzunaSource,
+  advancetrsSource,
   bimplusSource,
   careerjetSource,
   ciobSource,
@@ -67,11 +72,14 @@ const sourceClients = [
   glassdoorSource,
   guardianSource,
   haysSource,
+  icerecruitSource,
   joobleSource,
   jobserveSource,
   linkedinSource,
+  matchtechSource,
   michaelpageSource,
   monsterSource,
+  morsonSource,
   reedSource,
   risetechnicalSource,
   serperSource,

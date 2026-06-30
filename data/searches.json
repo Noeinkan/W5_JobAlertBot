@@ -3,7 +3,7 @@
     "country": "uk",
     "location": "London",
     "distance_from_location": 30,
-    "allowed_sources": ["adzuna", "reed", "serper", "linkedin", "jooble", "careerjet", "guardian", "jobserve", "construction_enquirer", "cvlibrary", "risetechnical", "ciob", "bimplus", "technojobs", "totaljobs", "cwjobs", "hays", "michaelpage", "monster", "glassdoor"],
+    "allowed_sources": ["adzuna", "reed", "serper", "linkedin", "jooble", "careerjet", "guardian", "jobserve", "construction_enquirer", "cvlibrary", "risetechnical", "ciob", "bimplus", "technojobs", "totaljobs", "cwjobs", "hays", "michaelpage", "matchtech", "morson", "advancetrs", "icerecruit", "monster", "glassdoor"],
     "exclude_keywords": ["graduate", "junior", "trainee", "apprentice", "entry level"],
     "enrich_jobs": true
   },

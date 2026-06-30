@@ -47,11 +47,12 @@ ssh "$SERVER" bash <<EOF
   set -e
   cd "$REMOTE"
 
-  # Skip npm ci when package-lock.json hasn't changed — saves 20–60s per deploy.
   if [ ! -f .package-lock.sha256 ] || ! sha256sum -c .package-lock.sha256 --status 2>/dev/null; then
     echo "  → package-lock.json changed, running npm ci …"
     npm ci --omit=dev --silent --no-audit --no-fund
     sha256sum package-lock.json > .package-lock.sha256
+    npx playwright install chromium --with-deps 2>/dev/null || npx playwright install chromium
+    echo "  → Playwright chromium installed"
   else
     echo "  → deps unchanged, skipping npm ci"
   fi
