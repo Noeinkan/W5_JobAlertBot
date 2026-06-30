@@ -5,6 +5,53 @@ import { logger } from './logger.js';
 const DESCRIPTION_MAX_CHARS = 600;
 const VALID_RATINGS = new Set(['Green', 'Amber', 'Red']);
 
+// Circuit breaker state — in-memory only, scoped to the current Node.js process.
+// Each search cycle runs in one process invocation, so this naturally resets
+// across PM2 worker restarts. Do not share state across processes.
+const DEFAULT_CIRCUIT_BREAKER_THRESHOLD = 3;
+export const LLM_CIRCUIT_BREAKER_THRESHOLD = (() => {
+  const raw = process.env.LLM_CIRCUIT_BREAKER_THRESHOLD;
+  if (raw === undefined || raw === '') return DEFAULT_CIRCUIT_BREAKER_THRESHOLD;
+  const n = Number.parseInt(String(raw), 10);
+  return Number.isFinite(n) && n >= 1 ? n : DEFAULT_CIRCUIT_BREAKER_THRESHOLD;
+})();
+
+let llmFailureCount = 0;
+let llmCircuitOpen = false;
+
+function tripCircuitBreaker(reason) {
+  if (llmCircuitOpen) return;
+  llmCircuitOpen = true;
+  logger.warn('LLM disabled for remainder of cycle', {
+    event: 'circuit_open',
+    threshold: LLM_CIRCUIT_BREAKER_THRESHOLD,
+    reason,
+  });
+}
+
+export function resetLLMCircuitBreaker() {
+  llmFailureCount = 0;
+  llmCircuitOpen = false;
+}
+
+export function isLLMCircuitOpen() {
+  return llmCircuitOpen;
+}
+
+/**
+ * Confidence gate: only call the LLM for regex results that are genuinely
+ * uncertain. Skip when the regex pre-filter is clearly decisive.
+ *
+ *  - Red, score <= -10          → clearly Red, accept
+ *  - Green, score >= 18         → clearly Green, rubber-stamp
+ *  - everything else            → call the LLM
+ */
+export function shouldCallLLM(regexRating, regexScore) {
+  if (regexRating === 'Red' && regexScore <= -10) return false;
+  if (regexRating === 'Green' && regexScore >= 18) return false;
+  return true;
+}
+
 function buildPrompt(job, { regexRating, regexScore }) {
   const title = String(job.title ?? '').slice(0, 160);
   const company = String(job.company ?? '').slice(0, 100);
@@ -42,12 +89,23 @@ function parseAndValidate(rawText) {
   };
 }
 
+function recordLLMFailure(errCode) {
+  llmFailureCount += 1;
+  if (llmFailureCount >= LLM_CIRCUIT_BREAKER_THRESHOLD) {
+    tripCircuitBreaker(`failures=${llmFailureCount} lastError=${errCode}`);
+  }
+}
+
 /**
  * Returns { ok: true, rating, score, reason, fitSummary, model, analyzedAt, latencyMs }
  *      or { ok: false, error, latencyMs }.
  * Never throws — pipeline must keep running on any failure.
  */
 export async function analyzeJobWithLLM(job, { regexRating, regexScore } = {}) {
+  if (llmCircuitOpen) {
+    return { ok: false, error: 'circuit_open', latencyMs: 0 };
+  }
+
   const startedAt = Date.now();
   const prompt = buildPrompt(job, { regexRating, regexScore });
 
@@ -71,6 +129,7 @@ export async function analyzeJobWithLLM(job, { regexRating, regexScore } = {}) {
     const text = response?.data?.response;
     if (typeof text !== 'string') {
       logger.debug('LLM analysis: non-string response', { source: job.source, latencyMs });
+      recordLLMFailure('parse');
       return { ok: false, error: 'parse', latencyMs };
     }
 
@@ -81,6 +140,7 @@ export async function analyzeJobWithLLM(job, { regexRating, regexScore } = {}) {
         latencyMs,
         preview: text.slice(0, 200),
       });
+      recordLLMFailure('parse');
       return { ok: false, error: 'parse', latencyMs };
     }
 
@@ -116,6 +176,7 @@ export async function analyzeJobWithLLM(job, { regexRating, regexScore } = {}) {
       error: errCode,
       message: error.message,
     });
+    recordLLMFailure(errCode);
     return { ok: false, error: errCode, latencyMs };
   }
 }

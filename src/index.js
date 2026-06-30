@@ -55,7 +55,12 @@ import { scoreJob } from './utils/rag.js';
 import { isSeniorEnough } from './utils/seniority.js';
 import { enrichJobDescription } from './utils/enrich.js';
 import { extractJobSignals, mergeJobSignals } from './utils/extractors.js';
-import { analyzeJobWithLLM } from './utils/llm.js';
+import {
+  analyzeJobWithLLM,
+  isLLMCircuitOpen,
+  resetLLMCircuitBreaker,
+  shouldCallLLM,
+} from './utils/llm.js';
 import { createRunCsvLog } from './utils/run_log_csv.js';
 import { loadProfileFitConfig, scoreProfileFit } from './utils/profileFit.js';
 
@@ -182,6 +187,7 @@ async function runSearchCycle(trigger = 'scheduled') {
   }
 
   isRunInProgress = true;
+  resetLLMCircuitBreaker();
   const searches = loadSearches();
   const newJobs = [];
   let totalResults = 0;
@@ -297,9 +303,23 @@ async function runSearchCycle(trigger = 'scheduled') {
 
             // LLM analysis runs on Amber+Green when enabled; on success its verdict
             // overrides the regex rating for downstream filters and notifications.
-            const llmResult = (env.ollamaEnabled && rating !== 'Red')
-              ? await analyzeJobWithLLM(job, { regexRating: rating, regexScore: score })
-              : null;
+            // Confidence gate: skip the LLM when the regex result is already
+            // decisive (clearly Red or clearly Green) — the LLM would either
+            // rubber-stamp or get it wrong in the same direction.
+            let llmResult = null;
+            if (env.ollamaEnabled && rating !== 'Red') {
+              if (shouldCallLLM(rating, score)) {
+                llmResult = await analyzeJobWithLLM(job, { regexRating: rating, regexScore: score });
+              } else {
+                logger.debug('Skipping LLM: high-confidence regex result', {
+                  source: job.source,
+                  regexRating: rating,
+                  regexScore: score,
+                  reason: 'high_confidence',
+                });
+                llmResult = { ok: false, skipped: true, error: 'skipped_high_confidence', latencyMs: 0 };
+              }
+            }
             const effective = llmResult?.ok
               ? { rating: llmResult.rating, score: llmResult.score, reason: llmResult.reason }
               : { rating, score, reason };
@@ -486,6 +506,7 @@ async function runSearchCycle(trigger = 'scheduled') {
       alreadySeen: cycleStats.alreadySeen,
       sentToDiscord: pendingJobs.length,
       failedSources,
+      llmCircuitOpened: isLLMCircuitOpen(),
     });
 
     lastRunSummary = {
