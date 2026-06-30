@@ -263,6 +263,8 @@ body.col-resizing{cursor:col-resize;user-select:none}
 .run-btn:disabled{opacity:.5;cursor:default}
 .run-btn.stop{background:#dc2626}
 .run-btn.stop:hover:not(:disabled){background:#b91c1c}
+.run-btn.ghost{background:#1f2937;color:#cbd5e1;border:1px solid #334155}
+.run-btn.ghost:hover:not(:disabled){background:#334155;color:#fff}
 #headerButtons{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap}
 #botStateBadge{font-size:.75rem;padding:.2rem .55rem;border-radius:4px;font-weight:600;white-space:nowrap}
 #botStateBadge.idle   {background:#1e2235;color:#64748b}
@@ -450,3 +452,5 @@ body.col-resizing{cursor:col-resize;user-select:none}
 .live-pill::before{content:'';width:.45rem;height:.45rem;border-radius:50%;background:#22d3ee;box-shadow:0 0 6px rgba(34,211,238,.65);animation:livePulse 1.4s ease-in-out infinite}
 @keyframes livePulse{0%,100%{opacity:.55;transform:scale(.85)}50%{opacity:1;transform:scale(1)}}
 .live-stamp{font-size:.66rem;color:#475569;font-variant-numeric:tabular-nums}
+.session-pill{font-size:.66rem;font-weight:600;color:#4ade80;background:rgba(74,222,128,.08);border:1px solid rgba(74,222,128,.32);border-radius:999px;padding:.18rem .55rem;letter-spacing:.02em;animation:sessionFlash 1.6s ease-out 1}
+@keyframes sessionFlash{0%{background:rgba(74,222,128,.35)}100%{background:rgba(74,222,128,.08)}}

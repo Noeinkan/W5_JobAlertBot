@@ -570,12 +570,20 @@ let globalQ    = '';
 // "Hide jobs posted >2 months ago" — separate from per-run filters so it
 // survives a "Clear filters" click. Defaults ON per UX request.
 const HIDE_OLD_JOBS_STORAGE_KEY = 'dashboardHideOldJobsV1';
+const HIDE_OLD_JOBS_DEFAULT_SEEN_KEY = 'dashboardHideOldJobsDefaultV1Seen';
 const OLD_JOB_THRESHOLD_MS = 60 * 24 * 60 * 60 * 1000; // ~2 months (calendar approx)
 function loadHideOldJobsPref() {
   try {
     const raw = localStorage.getItem(HIDE_OLD_JOBS_STORAGE_KEY);
-    if (raw === null) return true;            // default ON
-    return raw === '1' || raw === 'true';
+    if (raw !== null) return raw === '1' || raw === 'true';
+    // First-time visit (or version bump) — force ON and remember we've applied the default
+    // so we don't fight a user who explicitly turns it off in the same session.
+    const seen = localStorage.getItem(HIDE_OLD_JOBS_DEFAULT_SEEN_KEY);
+    if (!seen) {
+      localStorage.setItem(HIDE_OLD_JOBS_STORAGE_KEY, '1');
+      localStorage.setItem(HIDE_OLD_JOBS_DEFAULT_SEEN_KEY, '1');
+    }
+    return true;
   } catch { return true; }
 }
 function saveHideOldJobsPref(on) {
@@ -2815,12 +2823,13 @@ async function loadFile(filename) {
   const d = data.runAt ? new Date(data.runAt).toLocaleString('en-GB') : '';
   document.getElementById('meta').textContent = d + (data.trigger ? '  ·  ' + data.trigger : '');
   render(data);
-  // Reset live state whenever the user loads a fresh view
+  // The user picked a new view. liveModeActive is driven by bot status (SSE);
+  // we only flip the table-delta flag here so KPI/chart ticks keep running.
   const selEl = document.getElementById('fileSelect');
-  liveModeActive = (selEl && selEl.value === ALL_JOBS_VALUE);
-  liveMaxRowId = liveModeActive ? computeMaxRowId(data.rows || []) : 0;
+  const onAllJobs = !!selEl && selEl.value === ALL_JOBS_VALUE;
+  liveTableActive = onAllJobs;
+  liveMaxRowId = onAllJobs ? computeMaxRowId(data.rows || []) : liveMaxRowId;
   liveUpdateHeaderChrome();
-  if (!liveModeActive) stopLiveLoop();
 }
 
 function computeMaxRowId(rows) {
@@ -3050,9 +3059,9 @@ function applyStatus(s) {
   if (!running) {
     if (needsRefresh) { needsRefresh = false; refreshFiles(); }
     // One final snapshot after the run ends so the user sees the last numbers without needing to reload.
-    stopLiveLoop();
-    if (liveModeActive || (document.getElementById('fileSelect')?.value === ALL_JOBS_VALUE)) {
-      // re-render once with the absolute data so the heavy charts catch the final state too
+    // refreshLiveMode(false) already reloads CSV views; reload All Jobs here for the heavy charts.
+    const sel = document.getElementById('fileSelect');
+    if (sel && sel.value === ALL_JOBS_VALUE) {
       loadFile(ALL_JOBS_VALUE).catch(() => {});
     }
   }
@@ -3103,6 +3112,42 @@ startBotBtn.addEventListener('click', () => {
 
 stopBotBtn.addEventListener('click', () => botAction('stop'));
 
+const diagnoseBtn = document.getElementById('diagnoseBtn');
+if (diagnoseBtn) {
+  diagnoseBtn.addEventListener('click', showDiagnose);
+}
+
+async function showDiagnose() {
+  try {
+    const res = await fetchWithDashboardToken(API_BASE + '/api/bot/diagnose', { method: 'GET' });
+    if (!res.ok) {
+      alert('Diagnose failed: HTTP ' + res.status);
+      return;
+    }
+    const d = await res.json();
+    const lines = [];
+    lines.push(`Bot: ${d.botRunning ? 'running' : 'NOT running'} (${d.botManagedBy || 'unknown'})`);
+    const dc = d.discord || {};
+    lines.push(`Discord: token=${dc.tokenPresent ? 'yes' : 'no'} channel=${dc.channelPresent ? 'yes' : 'no'} webhook=${dc.webhookPresent ? 'yes' : 'no'}`);
+    const c = d.counts || {};
+    lines.push(`Jobs: total=${c.totalJobs ?? 0} pending=${c.pending ?? 0} unnotified=${c.unnotified ?? 0} already-sent=${c.alreadySent ?? 0} filtered=${c.filtered ?? 0}`);
+    if (Array.isArray(c.byFilter) && c.byFilter.length) {
+      lines.push('Top filter reasons: ' + c.byFilter.map(r => `${r.reason}=${r.n}`).join(', '));
+    }
+    if (d.lastNewJob) {
+      lines.push(`Last new unfiltered job: ${d.lastNewJob.found_at} — ${d.lastNewJob.source} "${d.lastNewJob.title}"`);
+    }
+    if (Array.isArray(d.hints) && d.hints.length) {
+      lines.push('');
+      lines.push('Hints:');
+      for (const h of d.hints) lines.push('  • ' + h);
+    }
+    alert(lines.join('\n'));
+  } catch (e) {
+    alert('Diagnose error: ' + (e && e.message || e));
+  }
+}
+
 if (downloadLogBtn) {
   downloadLogBtn.addEventListener('click', async e => {
     e.stopPropagation();
@@ -3112,11 +3157,25 @@ if (downloadLogBtn) {
 }
 
 // ── Live updates while the bot is running ────────────────────────────────────
-let liveModeActive = false;       // true when the user is on "All jobs (deduped)" and the bot is running
-let liveMaxRowId    = 0;          // monotonic id watermark — only fetch rows newer than this
-let liveTickTimer   = null;       // setInterval handle for the live polling loop
-const LIVE_TICK_MS  = 3000;       // poll interval; tuned for ~25 sources
-const LIVE_TICK_BACKOFF_MS = 8000; // back off when the server is busy
+//
+// Two layers of "live":
+//   • Overview KPIs + the 5 small overview charts always tick when the bot is running
+//     (cheap — single /api/summary per poll) regardless of which view is selected.
+//   • Table rows only tick when the user is on "All jobs (deduped)". Per-CSV views
+//     render from a frozen snapshot; on run-finish we auto-reload the CSV once.
+let liveModeActive    = false;   // true when the bot is running (any view)
+let liveTableActive   = false;   // true when live table-row deltas are being applied (All Jobs view)
+let liveMaxRowId      = 0;       // monotonic id watermark — only fetch rows newer than this
+let liveTickTimer     = null;    // setInterval handle for the live polling loop
+let liveTickCadence   = 3000;    // current poll cadence in ms (adaptive)
+let liveBaseCadence   = 3000;    // base cadence while activity is detected
+let liveIdleCadence   = 8000;    // slower cadence when no new rows for a while
+let liveStaleTicks    = 0;       // consecutive polls with no new rows → drift to idle cadence
+let liveLastTickAt    = 0;       // ms timestamp of the last successful tick
+let livePrevMaxId     = 0;       // last seen global max id (for the "N new since open" pill)
+let liveSessionStartMaxId = 0;   // max id at the moment the user opened this dashboard session
+let liveSessionNewCount   = 0;   // rows inserted since session start (any view)
+const LIVE_TICK_BACKOFF_MS = 12000; // back off hard when the server is busy
 
 function liveUpdateHeaderChrome() {
   const meta = document.getElementById('meta');
@@ -3137,12 +3196,35 @@ function liveUpdateHeaderChrome() {
     const old = meta.querySelector('.live-stamp');
     if (old) old.remove();
     meta.appendChild(stamp);
+    renderSessionPill();
   } else {
     const pill = meta.querySelector('.live-pill');
     if (pill) pill.remove();
     const stamp = meta.querySelector('.live-stamp');
     if (stamp) stamp.remove();
+    const sp = meta.querySelector('.session-pill');
+    if (sp) sp.remove();
   }
+}
+
+function renderSessionPill() {
+  const meta = document.getElementById('meta');
+  if (!meta) return;
+  let pill = meta.querySelector('.session-pill');
+  if (liveSessionNewCount <= 0) {
+    if (pill) pill.remove();
+    return;
+  }
+  const label = liveTableActive
+    ? `+${liveSessionNewCount} new in table since you opened`
+    : `+${liveSessionNewCount} new jobs since you opened (open “All jobs” to see them)`;
+  if (!pill) {
+    pill = document.createElement('span');
+    pill.className = 'session-pill';
+    pill.title = 'New rows inserted into the database since this dashboard session started.';
+    meta.appendChild(pill);
+  }
+  pill.textContent = label;
 }
 
 function bumpLiveStamp() {
@@ -3209,76 +3291,143 @@ function patchOverview(summary) {
 async function liveTick() {
   if (!liveModeActive) return;
   try {
-    const deltaUrl = API_BASE + '/api/data/all?since=' + encodeURIComponent(String(liveMaxRowId || 0));
-    const [deltaRes, summaryRes] = await Promise.all([
-      fetch(deltaUrl),
-      fetch(API_BASE + '/api/summary'),
-    ]);
-    if (!deltaRes.ok || !summaryRes.ok) return;
-    const delta = await deltaRes.json();
+    const summaryRes = await fetch(API_BASE + '/api/summary');
+    if (!summaryRes.ok) { liveTickCadence = LIVE_TICK_BACKOFF_MS; return; }
     const summary = await summaryRes.json();
 
-    // Always update totals & charts (cheap and important for the live feel).
+    // Track session-wide new-row count before we move the watermark.
+    if (typeof summary.maxId === 'number') {
+      if (liveSessionStartMaxId === 0) {
+        // First tick of the session — seed both watermarks so we don't count the entire DB.
+        liveSessionStartMaxId = summary.maxId;
+        livePrevMaxId = summary.maxId;
+      } else if (summary.maxId > livePrevMaxId) {
+        liveSessionNewCount += (summary.maxId - livePrevMaxId);
+        livePrevMaxId = summary.maxId;
+      } else if (summary.maxId < livePrevMaxId) {
+        // Database shrank (e.g. retention job) — reset watermark without inflating the counter.
+        livePrevMaxId = summary.maxId;
+      }
+    }
+
+    // Always update totals & overview charts (cheap and important for the live feel).
     patchOverview(summary);
     bumpLiveStamp();
+    renderSessionPill();
 
-    // Append any newly-inserted rows to the table.
-    if (delta && Array.isArray(delta.rows) && delta.rows.length && typeof renderTable === 'function') {
-      const seen = new Set(tableRows.map(r => (r.title ?? '') + '\0' + (r.company ?? '') + '\0' + (r.source ?? '')));
-      const added = [];
-      for (const r of delta.rows) {
-        const key = (r.title ?? '') + '\0' + (r.company ?? '') + '\0' + (r.source ?? '');
-        if (seen.has(key)) continue;
-        seen.add(key);
-        added.push(r);
-      }
-      if (added.length) {
-        tableRows = added.concat(tableRows);
-        liveJustAddedCount = added.length;
-        renderTable();
-      }
-      if (typeof delta.maxId === 'number' && delta.maxId > liveMaxRowId) {
-        liveMaxRowId = delta.maxId;
-      } else if (typeof summary.maxId === 'number' && summary.maxId > liveMaxRowId) {
-        liveMaxRowId = summary.maxId;
+    // Table deltas only apply on the "All jobs" view (CSV views are frozen snapshots).
+    if (liveTableActive) {
+      const deltaUrl = API_BASE + '/api/data/all?since=' + encodeURIComponent(String(liveMaxRowId || 0));
+      const deltaRes = await fetch(deltaUrl);
+      if (deltaRes.ok) {
+        const delta = await deltaRes.json();
+        if (delta && Array.isArray(delta.rows) && delta.rows.length && typeof renderTable === 'function') {
+          const seen = new Set(tableRows.map(r => (r.title ?? '') + '\0' + (r.company ?? '') + '\0' + (r.source ?? '')));
+          const added = [];
+          for (const r of delta.rows) {
+            const key = (r.title ?? '') + '\0' + (r.company ?? '') + '\0' + (r.source ?? '');
+            if (seen.has(key)) continue;
+            seen.add(key);
+            added.push(r);
+          }
+          if (added.length) {
+            tableRows = added.concat(tableRows);
+            liveJustAddedCount = added.length;
+            renderTable();
+          }
+        }
+        if (typeof delta.maxId === 'number' && delta.maxId > liveMaxRowId) {
+          liveMaxRowId = delta.maxId;
+        } else if (typeof summary.maxId === 'number' && summary.maxId > liveMaxRowId) {
+          liveMaxRowId = summary.maxId;
+        }
       }
     } else if (typeof summary.maxId === 'number' && summary.maxId > liveMaxRowId) {
       liveMaxRowId = summary.maxId;
     }
+
+    // Adaptive cadence: poll faster while activity is detected, slow down when idle.
+    liveStaleTicks = 0;
+    liveLastTickAt = Date.now();
+    if (liveTickCadence !== liveBaseCadence) {
+      liveTickCadence = liveBaseCadence;
+      restartLiveLoopTimer();
+    }
   } catch (_) {
-    // network blip — leave the existing values in place
+    // network blip — slow down briefly and leave the existing values in place
+    liveStaleTicks++;
+    if (liveStaleTicks >= 3) {
+      liveTickCadence = LIVE_TICK_BACKOFF_MS;
+      restartLiveLoopTimer();
+    }
   }
 }
 
 function startLiveLoop() {
   if (liveTickTimer) return;
   if (!liveModeActive) return;
-  liveTickTimer = setInterval(liveTick, LIVE_TICK_MS);
+  liveTickCadence = liveBaseCadence;
+  liveTickTimer = setInterval(liveTick, liveTickCadence);
   // Kick once immediately so the first paint feels snappy.
   liveTick();
+  // Drift to idle cadence after a stretch of inactivity.
+  liveIdleTimer = setInterval(() => {
+    if (!liveModeActive) return;
+    if (liveStaleTicks > 0) {
+      liveStaleTicks++;
+      if (liveStaleTicks >= 4 && liveTickCadence !== liveIdleCadence) {
+        liveTickCadence = liveIdleCadence;
+        restartLiveLoopTimer();
+      }
+    } else {
+      liveStaleTicks = 1;
+    }
+  }, liveBaseCadence);
+}
+
+let liveIdleTimer = null;
+function restartLiveLoopTimer() {
+  if (liveTickTimer) { clearInterval(liveTickTimer); liveTickTimer = null; }
+  if (!liveModeActive) return;
+  liveTickTimer = setInterval(liveTick, liveTickCadence);
 }
 
 function stopLiveLoop() {
-  if (liveTickTimer) { clearInterval(liveTickTimer); liveTickTimer = null; }
+  if (liveTickTimer)  { clearInterval(liveTickTimer);  liveTickTimer = null; }
+  if (liveIdleTimer)  { clearInterval(liveIdleTimer);  liveIdleTimer = null; }
 }
 
 function refreshLiveMode(botRunning) {
   const selEl = document.getElementById('fileSelect');
   const onAllJobs = !!selEl && selEl.value === ALL_JOBS_VALUE;
-  // Live mode is only meaningful when (a) a run is active, AND (b) the user is viewing "All jobs (deduped)".
-  // For other selections, the table renders from a CSV snapshot — the run's CSV file isn't visible mid-run yet.
-  const want = botRunning && onAllJobs;
+  // Live mode is meaningful whenever the bot is running. Table-row deltas are
+  // only applied on the "All jobs" view; KPI/chart ticks run on every view.
+  const want = !!botRunning;
+  const tableWant = want && onAllJobs;
   if (want && !liveModeActive) {
     liveModeActive = true;
+    liveTableActive = tableWant;
+    liveStaleTicks = 0;
+    liveTickCadence = liveBaseCadence;
     liveUpdateHeaderChrome();
     startLiveLoop();
   } else if (!want && liveModeActive) {
     liveModeActive = false;
+    liveTableActive = false;
     liveUpdateHeaderChrome();
     stopLiveLoop();
-  } else if (want) {
-    // already active — restart to reset cadence (back-off on errors won't trigger here)
-    startLiveLoop();
+    // Run finished while user was on a CSV view — reload the snapshot so the
+    // new rows from the just-finished run are visible.
+    if (selEl && selEl.value && selEl.value !== ALL_JOBS_VALUE) {
+      const finishedFile = selEl.value;
+      loadFile(finishedFile).catch(() => {});
+    }
+  } else {
+    if (liveTableActive !== tableWant) {
+      liveTableActive = tableWant;
+      renderSessionPill();
+    }
+    if (want) startLiveLoop();
   }
 }
 

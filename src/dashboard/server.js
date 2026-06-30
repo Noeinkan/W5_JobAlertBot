@@ -19,11 +19,13 @@ import {
   invalidateAllAggregateCaches,
 } from './aggregate.js';
 import {
-  getBotProc,
   getBotStatus,
   getSseClients,
+  readLiveStatus,
   startBot,
+  stopBot,
 } from './bot-process.js';
+import { hasDiscordBotConfig, hasDiscordWebhookConfig, env as appEnv } from '../config.js';
 import { tokenOk } from './auth.js';
 import { appConfig, env } from '../config.js';
 
@@ -86,8 +88,9 @@ function buildDashboardHtml(basePath, profileFitEnabled) {
   <span id="botStateBadge" class="idle">idle</span>
   <div id="headerButtons">
     <button id="runOnceBtn" class="run-btn" title="Run one fetch cycle now">▶ Run Once</button>
-    <button id="startBotBtn" class="run-btn" title="Start the bot scheduler (npm run bot)">▶ Start Bot</button>
+    <button id="startBotBtn" class="run-btn" title="Start the bot scheduler (delegates to PM2 on prod)">▶ Start Bot</button>
     <button id="stopBotBtn"  class="run-btn stop" title="Stop the running process" style="display:none">■ Stop</button>
+    <button id="diagnoseBtn" class="run-btn ghost" title="Explain why no jobs are being posted" style="margin-left:.25rem">🩺 Diagnose</button>
   </div>
 </header>
 <div id="preMain">
@@ -137,7 +140,7 @@ export function createDashboardServer({ port, host, token, basePath }) {
   const LOOPBACK = new Set(['127.0.0.1', 'localhost', '::1', '0:0:0:0:0:0:0:1']);
   const enforceTokenGlobally = !!token && !LOOPBACK.has(host);
 
-  return http.createServer((req, res) => {
+  return http.createServer(async (req, res) => {
     const url = new URL(req.url, `http://localhost:${port}`);
     const pathname = basePath && url.pathname.startsWith(basePath)
       ? url.pathname.slice(basePath.length) || '/'
@@ -182,8 +185,13 @@ export function createDashboardServer({ port, host, token, basePath }) {
     }
 
     if (pathname === '/api/bot/status') {
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify(getBotStatus()));
+      readLiveStatus().then(status => {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(status));
+      }).catch(() => {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(getBotStatus()));
+      });
       return;
     }
 
@@ -218,20 +226,91 @@ export function createDashboardServer({ port, host, token, basePath }) {
 
     if ((pathname === '/api/bot/start-once' || pathname === '/api/bot/start-daemon') && req.method === 'POST') {
       if (!tokenOk(req, res, token)) return;
-      if (getBotProc()) { res.writeHead(409); res.end('Already running'); return; }
       const mode = pathname.endsWith('once') ? 'once' : 'daemon';
-      startBot(mode);
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ ok: true }));
+      const status = getBotStatus();
+      // Already-running check covers both spawn child and PM2-managed state.
+      if (status.state === 'running' && status.managedBy !== 'pm2') {
+        res.writeHead(409, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: false, reason: 'already_running' }));
+        return;
+      }
+      try {
+        const result = await startBot(mode);
+        res.writeHead(result.ok ? 200 : 409, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(result));
+      } catch (e) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: false, error: e.message }));
+      }
+      return;
+    }
+
+    if (pathname === '/api/bot/diagnose' && req.method === 'GET') {
+      if (!tokenOk(req, res, token)) return;
+      try {
+        const status = await readLiveStatus();
+        const db = getWriteDb();
+        const counts = {
+          totalJobs:     db.prepare("SELECT COUNT(*) AS n FROM jobs").get().n,
+          pending:       db.prepare("SELECT COUNT(*) AS n FROM jobs WHERE notified = 0 AND filter_reason IS NULL").get().n,
+          unnotified:    db.prepare("SELECT COUNT(*) AS n FROM jobs WHERE notified = 0").get().n,
+          filtered:      db.prepare("SELECT COUNT(*) AS n FROM jobs WHERE filter_reason IS NOT NULL").get().n,
+          alreadySent:   db.prepare("SELECT COUNT(*) AS n FROM jobs WHERE notified = 1").get().n,
+          byFilter:      db.prepare("SELECT filter_reason AS reason, COUNT(*) AS n FROM jobs WHERE filter_reason IS NOT NULL GROUP BY filter_reason ORDER BY n DESC LIMIT 10").all(),
+          recentRuns:    db.prepare("SELECT ran_at AS ranAt, source, search_id AS searchId, results_found AS fetched, new_jobs AS news FROM run_log ORDER BY id DESC LIMIT 5").all(),
+        };
+        const lastNewJob = db.prepare("SELECT found_at, source, title FROM jobs WHERE notified = 0 AND filter_reason IS NULL ORDER BY found_at DESC LIMIT 1").get();
+        const diagnosis = {
+          ok: true,
+          botRunning: status.state === 'running',
+          botManagedBy: status.managedBy,
+          discord: {
+            botConfigured:   hasDiscordBotConfig(),
+            webhookConfigured: hasDiscordWebhookConfig(),
+            tokenPresent:    Boolean(appEnv.discordToken),
+            channelPresent:  Boolean(appEnv.discordChannelId),
+            webhookPresent:  Boolean(appEnv.discordWebhookUrl),
+          },
+          counts,
+          lastNewJob: lastNewJob || null,
+          hints: [],
+        };
+        if (!diagnosis.botRunning) {
+          diagnosis.hints.push('Bot is not running — start it from the dashboard or via `pm2 start job-alert-bot`.');
+        }
+        if (!diagnosis.discord.botConfigured && !diagnosis.discord.webhookConfigured) {
+          diagnosis.hints.push('No Discord credentials found. Set DISCORD_TOKEN + DISCORD_CHANNEL_ID (bot) or DISCORD_WEBHOOK_URL in /opt/job-alert-bot/.env.');
+        } else if (diagnosis.discord.tokenPresent && !diagnosis.discord.channelPresent) {
+          diagnosis.hints.push('DISCORD_TOKEN is set but DISCORD_CHANNEL_ID is missing — alerts have nowhere to go.');
+        }
+        if (counts.pending === 0) {
+          if (counts.totalJobs === 0) {
+            diagnosis.hints.push('Database has zero jobs. The fetch pipeline has never produced a row — check the bot log for source failures.');
+          } else if (counts.unnotified > 0) {
+            diagnosis.hints.push('There are unnotified rows but all have filter_reason set. Inspect the "filtered" count by reason below.');
+          } else {
+            diagnosis.hints.push('Nothing left to send. Every job has been notified. Wait for the next cron tick (01:00/07:00/13:00/19:00 Europe/London) or trigger Run Once.');
+          }
+        }
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(diagnosis));
+      } catch (e) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: false, error: e.message }));
+      }
       return;
     }
 
     if (pathname === '/api/bot/stop' && req.method === 'POST') {
       if (!tokenOk(req, res, token)) return;
-      const botProc = getBotProc();
-      if (botProc) botProc.kill('SIGTERM');
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ ok: true }));
+      try {
+        const result = await stopBot();
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(result));
+      } catch (e) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: false, error: e.message }));
+      }
       return;
     }
 
