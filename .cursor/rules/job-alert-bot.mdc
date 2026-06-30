@@ -24,9 +24,10 @@ Adzuna, Reed, Serper, LinkedIn, Jooble, Careerjet, Guardian Jobs, JobServe, Cons
 
 ## Commands
 
-- `npm start` — bot
+- `npm start` — dashboard (port **3099**, auto-opens browser)
+- `npm run bot` — persistent Discord bot (scheduler + alerts)
 - `npm run once` — single run
-- `npm run dashboard` — dashboard (default port **3099**)
+- `npm run dashboard` — dashboard only, no browser auto-open shortcut (same as `npm start`)
 - `npm run check` — syntax check across bot + dashboard modules
 - `npm test` — tests
 - `npm run backfill:extractors` — backfill extraction columns

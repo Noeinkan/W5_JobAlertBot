@@ -94,6 +94,91 @@ const COL_DEFS = [
 const COL_DEFS_MAP = Object.fromEntries(COL_DEFS.map(c => [c.key, c]));
 const DEFAULT_COLUMN_ORDER = COL_DEFS.map(c => c.key);
 
+// ── Per-column + per-value hover help ───────────────────────────────────────
+// Shown when the user hovers over a cell. {col} placeholder is replaced with
+// the column's human label so each chip reads naturally.
+const COLUMN_HELP = {
+  outcome: {
+    base: 'Pipeline outcome for this row. {col} = where the job ended up after filtering, notification, or your dashboard action.',
+    byValue: {
+      new: 'Passed all filters and was sent to Discord as a new alert.',
+      already_seen: 'Seen on a previous run — kept in the DB for the history table but not re-posted.',
+      applied: 'You clicked Apply on this row in the dashboard.',
+      discarded: 'You clicked Not relevant on this row in the dashboard.',
+      expired: 'You marked this row as Expired (e.g. role closed on the source site).',
+      filtered_seniority: 'Blocked by the seniority gate (e.g. below your target level, or wrong direction).',
+      filtered_salary: 'Blocked because the salary fell outside your min/max band.',
+      filtered_match: 'Blocked because the title/description didn\'t match search intent strongly enough.',
+      filtered_rag: 'Blocked because the RAG score was too low (Red).',
+      filtered_profile: 'Blocked because CV/profile fit was Red (PROFILE_FIT_ENABLED is on).',
+      filtered_profile_strict: 'Blocked because PROFILE_FIT_STRICT is on and profile fit was Amber (only Green would pass).',
+    },
+  },
+  profile_rating: {
+    base: 'CV-aligned fit from {col} scoring against your patterns in data/profile.json. Only populated when PROFILE_FIT_ENABLED=true.',
+    byValue: {
+      Green: 'Strong match to your CV / target profile. Tuned via data/profile.json.',
+      Amber: 'Partial match — review manually.',
+      Red: 'Weak / off-target for your profile. Can be excluded automatically when PROFILE_FIT_STRICT=true.',
+    },
+  },
+  profile_score: {
+    base: 'Numeric score behind the {col} rating — the pattern-weighted total from data/profile.json.',
+  },
+  profile_reason: {
+    base: 'Short explanation of which profile patterns fired for this row. Tune the patterns in data/profile.json to change what {col} matches.',
+  },
+  rag_rating: {
+    base: 'Generic relevance rating (Green/Amber/Red) from src/utils/rag.js — weighted keyword scoring against the title and description. Independent of your CV.',
+    byValue: {
+      Green: 'Score ≥ 12 — strong RAG signal across title/domain/experience.',
+      Amber: 'Score 5–11 — partial signal, worth a glance.',
+      Red: 'Score < 5 or hit by a negative keyword (e.g. "junior", "graduate").',
+    },
+  },
+  rag_score: {
+    base: 'Numeric RAG score. ≥12 = Green, ≥5 = Amber, otherwise Red. Negative values mean the title/description triggered NON_AEC_DESC_BLOCKERS (e.g. data engineering, fintech).',
+  },
+  rag_reason: {
+    base: 'Which RAG signal groups fired for this row — Title seniority, Domain keywords (BIM / digital delivery / ISO 19650 …), Experience signals, and Non-AEC negatives.',
+  },
+  url:        { base: 'Original job link. Click "open" to view on the source site; click "highlights" to see the stored description with search/RAG/profile terms highlighted.' },
+  title:      { base: 'Job {col} as posted on the source site.' },
+  posted_at:  { base: 'When the source site listed the job, formatted DD/MM/YYYY. Empty if the source didn\'t provide one.' },
+  company:    { base: 'Employer {col} as posted. Sometimes blank on sources that hide it.' },
+  location:   { base: 'Job {col} (city/town or "Remote").' },
+  source:     { base: 'Which of the 25 source adapters fetched this row (Adzuna, Reed, LinkedIn, BIM+ Jobs, etc.).' },
+  search_name:{ base: 'Configured search in data/searches.json that matched this row. One search can hit multiple sources.' },
+  salary_text:{ base: 'Raw salary string from the source — the bot also parses salary_min / salary_max for the band charts.' },
+  is_contract:{ base: 'Whether the role is a contractor position (often day-rate) or permanent. Detected from the title and salary text.' },
+  rateType:   { base: 'Day-rate or hour-rate — derived from the salary string for contract roles.' },
+  rateDisplay:{ base: 'Display value for the day/hour rate.' },
+  yearlyGross:{ base: 'Approx annualised gross equivalent of the day/hour rate. Estimate only.' },
+  yearlyNet:  { base: 'Approx annualised net equivalent of the day/hour rate, after a rough tax adjustment. Estimate only.' },
+  remote_type:{ base: 'Extracted remote signal — "remote", "hybrid", or "on-site". Comes from src/utils/extractors.js.' },
+  sectors:    { base: 'Sector tags extracted from the description (pipe-separated).' },
+  clearances: { base: 'Security clearance mentioned in the description (e.g. SC, DV, BPSS).' },
+  found_at:   { base: 'When the bot first wrote this row to the SQLite jobs table.' },
+  tech_tools: { base: 'Tools / software mentioned in the description (Revit, Navisworks, Power BI …). Pipe-separated.' },
+  years_experience: { base: 'Years of experience signal extracted from the description, if present.' },
+  contract_length_months: { base: 'Contract duration in months, if the source mentioned one.' },
+  bonus_percent: { base: 'Discretionary bonus % mentioned in the description.' },
+  car_allowance: { base: 'Car / cash-for-car allowance mentioned in the description.' },
+  pension_percent:{ base: 'Employer pension contribution % mentioned in the description.' },
+  has_equity: { base: 'Whether the description mentions shares / equity / LTIP / stock options.' },
+  _actions:   { base: 'Dashboard-only actions: Apply (track that you applied), Not relevant (discard), Expired (role no longer live). Persisted back into SQLite.' },
+};
+
+function cellHelpText(col, value) {
+  const def = COLUMN_HELP[col.key];
+  if (!def) return '';
+  let base = def.base || '';
+  if (base && col.label) base = base.replace(/\{col\}/g, col.label);
+  const specific = def.byValue && value != null && value !== '' ? def.byValue[value] : null;
+  if (specific && base) return base + ' For this row: ' + specific;
+  return specific || base;
+}
+
 const LAYOUT_STORAGE_KEY = 'dashboardLayoutV1';
 const TEMPLATE_STORAGE_KEY = 'dashboardTemplatesV1';
 
@@ -165,13 +250,18 @@ function getCols() {
 
 // ── Chart helpers ─────────────────────────────────────────────────────────────
 let charts = [];
-function destroyCharts() { charts.forEach(c => c.destroy()); charts = []; }
+const chartsById = new Map(); // canvas id → Chart instance (live updates read this)
+function destroyCharts() {
+  charts.forEach(c => c.destroy());
+  charts = [];
+  chartsById.clear();
+}
 
 function mkChart(id, type, labels, datasets, extra = {}) {
   const ctx = document.getElementById(id);
   if (!ctx) return;
   const { onPick, ...rest } = extra;
-  charts.push(new Chart(ctx, {
+  const instance = new Chart(ctx, {
     type,
     data: { labels, datasets },
     options: {
@@ -191,7 +281,22 @@ function mkChart(id, type, labels, datasets, extra = {}) {
       } : undefined,
       ...rest,
     },
-  }));
+  });
+  charts.push(instance);
+  chartsById.set(id, instance);
+  return instance;
+}
+
+/** Patch an existing chart's first dataset values in place and trigger a no-animation update. */
+function patchChartData(chartId, newLabels, newData, colors) {
+  const chart = chartsById.get(chartId);
+  if (!chart) return;
+  if (newLabels) chart.data.labels = newLabels;
+  const ds = chart.data.datasets?.[0];
+  if (!ds) return;
+  ds.data = newData;
+  if (colors) ds.backgroundColor = colors;
+  chart.update('none');
 }
 
 function colorFromPercent(pct) {
@@ -229,16 +334,7 @@ function initHelpTips() {
   if (!tooltip) {
     tooltip = document.createElement('div');
     tooltip.id = 'helpTooltip';
-    tooltip.style.position = 'fixed';
-    tooltip.style.zIndex = '9999';
-    tooltip.style.maxWidth = '320px';
-    tooltip.style.padding = '.55rem .65rem';
-    tooltip.style.background = '#0f172a';
-    tooltip.style.border = '1px solid #334155';
-    tooltip.style.borderRadius = '8px';
-    tooltip.style.color = '#cbd5e1';
-    tooltip.style.fontSize = '.75rem';
-    tooltip.style.lineHeight = '1.4';
+    tooltip.className = 'help-tooltip';
     tooltip.style.display = 'none';
     document.body.appendChild(tooltip);
   }
@@ -247,11 +343,15 @@ function initHelpTips() {
     if (!tip) return;
     tooltip.textContent = tip;
     const rect = el.getBoundingClientRect();
-    tooltip.style.left = Math.min(window.innerWidth - 340, rect.left + 20) + 'px';
-    tooltip.style.top = Math.max(8, rect.bottom + 8) + 'px';
+    const tipWidth = tooltip.offsetWidth || 280;
+    const left = Math.min(window.innerWidth - tipWidth - 12, Math.max(8, rect.left + 12));
+    const top = Math.max(8, rect.bottom + 6);
+    tooltip.style.left = left + 'px';
+    tooltip.style.top  = top + 'px';
     tooltip.style.display = 'block';
   };
   const hide = () => { tooltip.style.display = 'none'; };
+
   document.querySelectorAll('.help-tip').forEach(btn => {
     btn.addEventListener('mouseenter', () => show(btn));
     btn.addEventListener('focus', () => show(btn));
@@ -262,6 +362,30 @@ function initHelpTips() {
       else show(btn);
     });
   });
+
+  // Delegated hover/focus for table cells — they get a `data-help` from cellHelpText().
+  const tbody = document.getElementById('tBody');
+  if (tbody && !tbody.__helpBound) {
+    tbody.__helpBound = true;
+    tbody.addEventListener('mouseover', (e) => {
+      const td = e.target.closest && e.target.closest('td[data-help]');
+      if (td) show(td);
+    });
+    tbody.addEventListener('mouseout', (e) => {
+      const td = e.target.closest && e.target.closest('td[data-help]');
+      if (!td) return;
+      // Only hide if we actually left the cell (not just crossed into a child).
+      if (!td.contains(e.relatedTarget)) hide();
+    });
+    tbody.addEventListener('focusin', (e) => {
+      const td = e.target.closest && e.target.closest('td[data-help]');
+      if (td) show(td);
+    });
+    tbody.addEventListener('focusout', (e) => {
+      const td = e.target.closest && e.target.closest('td[data-help]');
+      if (td && !td.contains(e.relatedTarget)) hide();
+    });
+  }
 }
 
 // ── Cross-filter state (PowerBI-style chart → table) ─────────────────────────
@@ -443,6 +567,30 @@ let sortDir    = DEFAULT_SORT_DIR;   // 'asc' | 'desc'
 let colFilters = {};      // { colKey: string }
 let globalQ    = '';
 
+// "Hide jobs posted >2 months ago" — separate from per-run filters so it
+// survives a "Clear filters" click. Defaults ON per UX request.
+const HIDE_OLD_JOBS_STORAGE_KEY = 'dashboardHideOldJobsV1';
+const OLD_JOB_THRESHOLD_MS = 60 * 24 * 60 * 60 * 1000; // ~2 months (calendar approx)
+function loadHideOldJobsPref() {
+  try {
+    const raw = localStorage.getItem(HIDE_OLD_JOBS_STORAGE_KEY);
+    if (raw === null) return true;            // default ON
+    return raw === '1' || raw === 'true';
+  } catch { return true; }
+}
+function saveHideOldJobsPref(on) {
+  try { localStorage.setItem(HIDE_OLD_JOBS_STORAGE_KEY, on ? '1' : '0'); } catch { /* ignore */ }
+}
+let hideOldJobs = loadHideOldJobsPref();
+
+/** True iff row.posted_at parses as a date older than the 2-month threshold. */
+function isPostedOlderThan2Months(row, cutoffTs) {
+  const v = row && row.posted_at;
+  if (v == null || v === '') return false; // never silently hide unknown dates
+  const t = Date.parse(String(v));
+  return !Number.isNaN(t) && t < cutoffTs;
+}
+
 /** Distinct non-empty values for a column — Excel-style filter source (full dataset, not filtered view). */
 function distinctValuesForColumn(key) {
   const set = new Set();
@@ -477,6 +625,12 @@ function syncColumnFilterSelectOptions() {
 
 function getVisible() {
   let rows = rowsPassingCross(tableRows);
+
+  // hide jobs published >2 months ago (toggle persisted in localStorage)
+  if (hideOldJobs) {
+    const cutoff = Date.now() - OLD_JOB_THRESHOLD_MS;
+    rows = rows.filter(r => !isPostedOlderThan2Months(r, cutoff));
+  }
 
   // global search
   if (globalQ) {
@@ -557,8 +711,12 @@ function renderTable() {
       const co = escHtml(r.company || '');
       const s  = escHtml(r.source  || '');
       const u  = escHtml(v);
-      cell = '<span class="link-cell-inner"><a href="' + u + '" target="_blank" rel="noreferrer">open ↗</a>'
-        + '<button type="button" class="job-preview-btn" data-title="' + t + '" data-company="' + co + '" data-source="' + s + '" data-url="' + u + '" title="Stored job text with search and RAG highlights">highlights</button></span>';
+      cell = '<span class="link-cell-inner">'
+        + '<a class="link-btn link-btn-open" href="' + u + '" target="_blank" rel="noreferrer" title="Open original job posting on the source site">'
+        + '<span>open</span><span class="arrow" aria-hidden="true">↗</span></a>'
+        + '<button type="button" class="link-btn link-btn-highlights job-preview-btn" data-title="' + t + '" data-company="' + co + '" data-source="' + s + '" data-url="' + u + '" title="View stored description with search and RAG highlights">'
+        + '<span class="dot" aria-hidden="true"></span><span>highlights</span></button>'
+        + '</span>';
     } else if (c.isRate && v) {
       const cls = r.rateType === 'day' ? 'rate-day' : 'rate-hour';
       cell = '<span class="badge ' + cls + '">' + escHtml(v) + '</span>';
@@ -579,7 +737,11 @@ function renderTable() {
       cell = escHtml(v);
     }
     const titleVal = c.key === 'posted_at' && v ? formatUkDateDdMmYyyy(v) : v;
-    return '<td data-key="' + escHtml(c.key) + '"' + (c.wrap ? ' class="wrap"' : '') + ' title="' + escHtml(titleVal) + '" style="width:' + escHtml(c.width) + ';max-width:' + escHtml(c.width) + '">' + cell + '</td>';
+    const helpText = cellHelpText(c, v);
+    return '<td data-key="' + escHtml(c.key) + '"' + (c.wrap ? ' class="wrap"' : '')
+      + ' tabindex="0"'
+      + ' data-help="' + escHtml(helpText) + '"'
+      + ' style="width:' + escHtml(c.width) + ';max-width:' + escHtml(c.width) + '">' + cell + '</td>';
   }).join('') + '</tr>';
   }).join('');
 
@@ -637,7 +799,11 @@ function buildTableToolbarHTML() {
   const d = (layoutState && layoutState.diagrams) ? layoutState.diagrams : DEFAULT_DIAGRAM_OPTS;
   const ck = (id, prop, label) =>
     '<label class="dash-diag-chk"><input type="checkbox" id="' + id + '" data-diag="' + prop + '"' + (d[prop] ? ' checked' : '') + '/> ' + escHtml(label) + '</label>';
-  return '<div class="layout-tools">' +
+  return '<label class="dash-old-jobs-chk" title="Hide rows whose Published date is older than ~2 months from today. Persists across runs in localStorage.">' +
+    '<input type="checkbox" id="dashHideOldJobs"' + (hideOldJobs ? ' checked' : '') + '/> ' +
+    'Hide jobs &gt; 2 months old' +
+    '</label>' +
+    '<div class="layout-tools">' +
     '<label for="dashTemplateSelect">Template</label>' +
     '<select id="dashTemplateSelect">' + opts + '</select>' +
     '<button type="button" class="btn" id="dashSaveTemplate" title="Save column order, widths, and diagram visibility">Save as…</button>' +
@@ -811,6 +977,13 @@ function initTableEvents() {
 
   card.addEventListener('change', e => {
     const t = e.target;
+    if (t.id === 'dashHideOldJobs') {
+      hideOldJobs = !!t.checked;
+      saveHideOldJobsPref(hideOldJobs);
+      page = 1;
+      renderTable();
+      return;
+    }
     if (t.dataset.filter && t.tagName === 'SELECT') {
       colFilters[t.dataset.filter] = t.value;
       page = 1;
@@ -1143,17 +1316,23 @@ function render(data) {
       </div>
     </section>
 
-    <section class="section open section-toggle-none" data-section="table">
+    <section class="section" data-section="trend" id="trendSection" style="display:none">
       <div class="section-header">
         <span class="chev">▶</span>
-        <h2>Data table</h2>
-        <span class="section-meta" id="tableSectionMeta">always visible · chart slices and chips cross-filter it</span>
+        <h2>Notify rate — recent runs
+          <span class="help-tip" data-help="What: Notify rate (% of fetched rows that got through all filters) across the most recent runs, with a trailing 7-run mean baseline. Why: Tell today's run from the baseline at a glance. Read: Flat or rising is healthy; a dip below the baseline means source or filter drift.">?</span>
+        </h2>
+        <span class="section-meta">trend across recent CSV runs</span>
       </div>
       <div class="section-body">
-        ${buildTableHTML(tableRows)}
+        <div class="chart-wrap tall"><canvas id="cTrend"></canvas></div>
       </div>
     </section>
   `;
+
+  // Data table is rendered into a placeholder in #preMain (right under the bot log).
+  const dataTableBody = document.getElementById('dataTableBody');
+  if (dataTableBody) dataTableBody.innerHTML = buildTableHTML(tableRows);
 
   // charts
   const outLabels = Object.keys(data.byOutcome);
@@ -2636,6 +2815,20 @@ async function loadFile(filename) {
   const d = data.runAt ? new Date(data.runAt).toLocaleString('en-GB') : '';
   document.getElementById('meta').textContent = d + (data.trigger ? '  ·  ' + data.trigger : '');
   render(data);
+  // Reset live state whenever the user loads a fresh view
+  const selEl = document.getElementById('fileSelect');
+  liveModeActive = (selEl && selEl.value === ALL_JOBS_VALUE);
+  liveMaxRowId = liveModeActive ? computeMaxRowId(data.rows || []) : 0;
+  liveUpdateHeaderChrome();
+  if (!liveModeActive) stopLiveLoop();
+}
+
+function computeMaxRowId(rows) {
+  let max = 0;
+  for (const r of rows) {
+    if (typeof r._id === 'number' && r._id > max) max = r._id;
+  }
+  return max;
 }
 
 function populateFileSelect(sel, files, preserveValue) {
@@ -2760,7 +2953,10 @@ async function init() {
   const files = await res.json();
   const sel = document.getElementById('fileSelect');
   populateFileSelect(sel, files);
-  sel.addEventListener('change', () => loadFile(sel.value));
+  sel.addEventListener('change', () => loadFile(sel.value).then(() => {
+    // After a manual switch, re-evaluate live mode based on the current bot status.
+    refreshLiveMode(stateBadge?.classList?.contains('running'));
+  }));
   initSectionToggles();
   fsBindCardButtons();
   loadTrend();
@@ -2849,7 +3045,17 @@ function applyStatus(s) {
     if (running) { logSec.style.display = ''; logSec.classList.add('has-activity'); }
     else         { logSec.classList.remove('has-activity'); }
   }
-  if (!running && needsRefresh) { needsRefresh = false; refreshFiles(); }
+  // Toggle the live polling loop to match bot status.
+  refreshLiveMode(running);
+  if (!running) {
+    if (needsRefresh) { needsRefresh = false; refreshFiles(); }
+    // One final snapshot after the run ends so the user sees the last numbers without needing to reload.
+    stopLiveLoop();
+    if (liveModeActive || (document.getElementById('fileSelect')?.value === ALL_JOBS_VALUE)) {
+      // re-render once with the absolute data so the heavy charts catch the final state too
+      loadFile(ALL_JOBS_VALUE).catch(() => {});
+    }
+  }
 }
 
 async function refreshFiles() {
@@ -2904,6 +3110,180 @@ if (downloadLogBtn) {
   });
   updateDownloadLogButton();
 }
+
+// ── Live updates while the bot is running ────────────────────────────────────
+let liveModeActive = false;       // true when the user is on "All jobs (deduped)" and the bot is running
+let liveMaxRowId    = 0;          // monotonic id watermark — only fetch rows newer than this
+let liveTickTimer   = null;       // setInterval handle for the live polling loop
+const LIVE_TICK_MS  = 3000;       // poll interval; tuned for ~25 sources
+const LIVE_TICK_BACKOFF_MS = 8000; // back off when the server is busy
+
+function liveUpdateHeaderChrome() {
+  const meta = document.getElementById('meta');
+  if (!meta) return;
+  meta.classList.toggle('live-on', !!liveModeActive);
+  if (liveModeActive) {
+    if (!meta.querySelector('.live-pill')) {
+      const pill = document.createElement('span');
+      pill.className = 'live-pill';
+      pill.title = 'Live mode: dashboard numbers tick up automatically while the bot is running.';
+      pill.textContent = '● Live';
+      meta.prepend(pill);
+    }
+    const stamp = document.createElement('span');
+    stamp.className = 'live-stamp';
+    stamp.dataset.role = 'live-stamp';
+    stamp.textContent = 'updated just now';
+    const old = meta.querySelector('.live-stamp');
+    if (old) old.remove();
+    meta.appendChild(stamp);
+  } else {
+    const pill = meta.querySelector('.live-pill');
+    if (pill) pill.remove();
+    const stamp = meta.querySelector('.live-stamp');
+    if (stamp) stamp.remove();
+  }
+}
+
+function bumpLiveStamp() {
+  const stamp = document.querySelector('[data-role="live-stamp"]');
+  if (stamp) stamp.textContent = 'updated ' + new Date().toLocaleTimeString('en-GB');
+}
+
+/**
+ * Patch the overview cards (KPIs + 5 visible charts) in place from a fresh /api/summary response.
+ * Does not touch table state, fullscreen modals, or the heavier analytics charts.
+ */
+function patchOverview(summary) {
+  // KPI text nodes — IDs already in the markup (#kpiTotal / kpiNotified / … / kpiExpired).
+  const setText = (id, val) => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = String(val ?? 0);
+  };
+  setText('kpiTotal',     summary.total);
+  setText('kpiNotified',  summary.byOutcome.new || 0);
+  setText('kpiSeen',      summary.byOutcome.already_seen || 0);
+  setText('kpiFiltered',  Object.entries(summary.byOutcome).filter(([k]) => k.startsWith('filtered')).reduce((s, [, v]) => s + v, 0));
+  setText('kpiContract',  summary.contractCount);
+  setText('kpiPerm',      summary.permCount);
+  setText('kpiApplied',   summary.byOutcome.applied || 0);
+  setText('kpiDiscarded', summary.byOutcome.discarded || 0);
+  setText('kpiExpired',   summary.byOutcome.expired || 0);
+
+  // Doughnut: outcome breakdown
+  const outLabels = Object.keys(summary.byOutcome);
+  patchChartData('cOutcome',
+    outLabels,
+    outLabels.map(l => summary.byOutcome[l]),
+    outLabels.map(l => OUTCOME_COLORS[l] || '#6366f1'));
+
+  // Doughnut: perm vs contract
+  patchChartData('cContract',
+    ['Perm', 'Contract'],
+    [summary.permCount, summary.contractCount],
+    ['#64748b', '#38bdf8']);
+
+  // Doughnut: RAG
+  const ragLabels = Object.keys(summary.byRag || {});
+  patchChartData('cRag',
+    ragLabels,
+    ragLabels.map(l => summary.byRag[l]),
+    ragLabels.map(l => RAG_COLORS[l] || '#94a3b8'));
+
+  // Doughnut: profile
+  const profileLabels = Object.keys(summary.byProfile || {});
+  patchChartData('cProfile',
+    profileLabels,
+    profileLabels.map(l => summary.byProfile[l]),
+    profileLabels.map(l => RAG_COLORS[l] || '#94a3b8'));
+
+  // Bar: jobs by source
+  const srcLabels = Object.keys(summary.bySource).sort((a, b) => summary.bySource[b] - summary.bySource[a]);
+  patchChartData('cSource',
+    srcLabels,
+    srcLabels.map(l => summary.bySource[l]),
+    PALETTE.slice(0, srcLabels.length));
+}
+
+/** Live tick: pull only jobs inserted since the watermark + a fresh summary. */
+async function liveTick() {
+  if (!liveModeActive) return;
+  try {
+    const deltaUrl = API_BASE + '/api/data/all?since=' + encodeURIComponent(String(liveMaxRowId || 0));
+    const [deltaRes, summaryRes] = await Promise.all([
+      fetch(deltaUrl),
+      fetch(API_BASE + '/api/summary'),
+    ]);
+    if (!deltaRes.ok || !summaryRes.ok) return;
+    const delta = await deltaRes.json();
+    const summary = await summaryRes.json();
+
+    // Always update totals & charts (cheap and important for the live feel).
+    patchOverview(summary);
+    bumpLiveStamp();
+
+    // Append any newly-inserted rows to the table.
+    if (delta && Array.isArray(delta.rows) && delta.rows.length && typeof renderTable === 'function') {
+      const seen = new Set(tableRows.map(r => (r.title ?? '') + '\0' + (r.company ?? '') + '\0' + (r.source ?? '')));
+      const added = [];
+      for (const r of delta.rows) {
+        const key = (r.title ?? '') + '\0' + (r.company ?? '') + '\0' + (r.source ?? '');
+        if (seen.has(key)) continue;
+        seen.add(key);
+        added.push(r);
+      }
+      if (added.length) {
+        tableRows = added.concat(tableRows);
+        liveJustAddedCount = added.length;
+        renderTable();
+      }
+      if (typeof delta.maxId === 'number' && delta.maxId > liveMaxRowId) {
+        liveMaxRowId = delta.maxId;
+      } else if (typeof summary.maxId === 'number' && summary.maxId > liveMaxRowId) {
+        liveMaxRowId = summary.maxId;
+      }
+    } else if (typeof summary.maxId === 'number' && summary.maxId > liveMaxRowId) {
+      liveMaxRowId = summary.maxId;
+    }
+  } catch (_) {
+    // network blip — leave the existing values in place
+  }
+}
+
+function startLiveLoop() {
+  if (liveTickTimer) return;
+  if (!liveModeActive) return;
+  liveTickTimer = setInterval(liveTick, LIVE_TICK_MS);
+  // Kick once immediately so the first paint feels snappy.
+  liveTick();
+}
+
+function stopLiveLoop() {
+  if (liveTickTimer) { clearInterval(liveTickTimer); liveTickTimer = null; }
+}
+
+function refreshLiveMode(botRunning) {
+  const selEl = document.getElementById('fileSelect');
+  const onAllJobs = !!selEl && selEl.value === ALL_JOBS_VALUE;
+  // Live mode is only meaningful when (a) a run is active, AND (b) the user is viewing "All jobs (deduped)".
+  // For other selections, the table renders from a CSV snapshot — the run's CSV file isn't visible mid-run yet.
+  const want = botRunning && onAllJobs;
+  if (want && !liveModeActive) {
+    liveModeActive = true;
+    liveUpdateHeaderChrome();
+    startLiveLoop();
+  } else if (!want && liveModeActive) {
+    liveModeActive = false;
+    liveUpdateHeaderChrome();
+    stopLiveLoop();
+  } else if (want) {
+    // already active — restart to reset cadence (back-off on errors won't trigger here)
+    startLiveLoop();
+  }
+}
+
+// keep a running tally of "new" rows since the dashboard was opened, shown briefly after each tick
+let liveJustAddedCount = 0;
 
 // SSE connection
 function connectSSE() {

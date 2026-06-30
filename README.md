@@ -151,10 +151,18 @@ Omitted keys keep legacy behaviour: no caps, no veto, no dimension gate.
 
 ## Local Usage
 
-### Start the persistent bot
+### Open the dashboard
 
 ```bash
 npm start
+```
+
+This launches the dashboard on `http://127.0.0.1:3099` and opens it in your default browser. The browser auto-open is skipped on headless Linux servers and can be disabled with `DASHBOARD_OPEN=0`. Use this when you just want to browse runs, charts, and the job table.
+
+### Start the persistent bot
+
+```bash
+npm run bot
 ```
 
 This mode:

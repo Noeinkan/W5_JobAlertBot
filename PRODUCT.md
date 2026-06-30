@@ -122,7 +122,7 @@ searches.json
 
 ## Deployment Options
 
-- **Local** — `npm start` for bot mode, `npm run once` for one-shot
+- **Local** — `npm start` opens the dashboard in your browser; `npm run bot` for the persistent bot, `npm run once` for one-shot
 - **PM2** — `pm2 start ecosystem.config.cjs`, with restart and log management
 - **systemd** — service unit in `deploy/job-alert-bot.service` for Linux servers
 

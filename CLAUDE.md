@@ -48,12 +48,13 @@ Node.js 20+, ESM, discord.js v14, better-sqlite3, axios, node-cron, dotenv, fast
 
 ## Commands
 
-- `npm start` — bot mode  
-- `npm run once` — one-shot mode  
-- `npm run check` — syntax check (includes dashboard and schema-related modules)  
-- `npm test` — test suite  
-- `npm run dashboard` — dashboard server (default port **3099**)  
-- `npm run backfill:extractors` — backfill extraction fields on existing DB rows  
+- `npm start` — dashboard server on port **3099** (auto-opens browser) 
+- `npm run bot` — persistent Discord bot (scheduler + alerts; the old `npm start`) 
+- `npm run once` — one-shot mode 
+- `npm run check` — syntax check (includes dashboard and schema-related modules) 
+- `npm test` — test suite 
+- `npm run dashboard` — dashboard server (default port **3099**; alias of `npm start`) 
+- `npm run backfill:extractors` — backfill extraction fields on existing DB rows
 
 ## Data Model
 

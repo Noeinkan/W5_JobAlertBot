@@ -52,7 +52,7 @@ export function getAllJobsForDashboard() {
   if (!readonlyStmt) {
     readonlyStmt = db.prepare(`
       SELECT
-        found_at, source, search_id, title, company, location, country,
+        id, found_at, source, search_id, title, company, location, country,
         salary_text, salary_min, salary_max, is_contract, url, posted_at,
         notified, filter_reason, rag_rating, rag_score, rag_reason,
         profile_rating, profile_score, profile_reason, profile_matches,
@@ -66,6 +66,79 @@ export function getAllJobsForDashboard() {
     `);
   }
   return readonlyStmt.all();
+}
+
+/**
+ * Returns rows written to `jobs` after the given monotonic row id (for live dashboard updates).
+ * Cheap to call repeatedly — uses `id > ?` on the autoincrement PK.
+ */
+export function getJobsSinceId(sinceId) {
+  const db = ensureReadonlyDb();
+  return db.prepare(`
+    SELECT
+      id, found_at, source, search_id, title, company, location, country,
+      salary_text, salary_min, salary_max, is_contract, url, posted_at,
+      notified, filter_reason, rag_rating, rag_score, rag_reason,
+      profile_rating, profile_score, profile_reason, profile_matches,
+      remote_type, contract_length_months, sectors, clearances, tech_tools,
+      years_experience, has_bonus, bonus_percent, car_allowance,
+      pension_percent, has_equity, applied, discarded, expired,
+      regex_rating, regex_score, regex_reason,
+      llm_rating, llm_score, llm_reason, llm_fit_summary, llm_model, llm_latency_ms
+    FROM jobs
+    WHERE id > ?
+    ORDER BY id ASC
+  `).all(Number(sinceId) || 0);
+}
+
+/** Latest autoincrement id in jobs; 0 if empty. */
+export function getMaxJobsId() {
+  const db = ensureReadonlyDb();
+  const row = db.prepare('SELECT MAX(id) AS max_id FROM jobs').get();
+  return row?.max_id ? Number(row.max_id) : 0;
+}
+
+/**
+ * Aggregate row counts by outcome / source / etc. for *all* jobs in SQLite.
+ * Lightweight — used by the dashboard's live polling (no per-row payload).
+ */
+export function getAllJobsSummary() {
+  const db = ensureReadonlyDb();
+  const rows = db.prepare(`
+    SELECT id, source, search_id, filter_reason, notified, applied, discarded, expired,
+           is_contract, salary_min, rag_rating, profile_rating
+    FROM jobs
+  `).all();
+  const maxId = rows.reduce((m, r) => (r.id > m ? r.id : m), 0);
+
+  const byOutcome = {};
+  const bySource = {};
+  const bySearch = {};
+  const byRag = {};
+  const byProfile = {};
+  let contractCount = 0;
+  let permCount = 0;
+  let salaryCount = 0;
+  for (const r of rows) {
+    const outcome = r.filter_reason
+      ? r.filter_reason
+      : (r.notified ? 'new' : 'already_seen');
+    byOutcome[outcome] = (byOutcome[outcome] || 0) + 1;
+    bySource[r.source || 'unknown'] = (bySource[r.source || 'unknown'] || 0) + 1;
+    const sid = r.search_id || 'unknown';
+    bySearch[sid] = (bySearch[sid] || 0) + 1;
+    if (r.rag_rating) byRag[r.rag_rating] = (byRag[r.rag_rating] || 0) + 1;
+    if (r.profile_rating) byProfile[r.profile_rating] = (byProfile[r.profile_rating] || 0) + 1;
+    if (r.is_contract) contractCount++;
+    else permCount++;
+    if (r.salary_min && r.salary_min > 0) salaryCount++;
+  }
+  return {
+    total: rows.length,
+    maxId,
+    byOutcome, bySource, bySearch, byRag, byProfile,
+    contractCount, permCount, salaryCount,
+  };
 }
 
 let previewStmt = null;
@@ -173,6 +246,7 @@ export function rowFromDbJob(job) {
       : (job.applied ? 'applied' : baseOutcome);
   return {
     _baseOutcome: baseOutcome,
+    _id: typeof job.id === 'number' ? job.id : null,
     run_at: job.found_at ?? '',
     trigger: 'db_all',
     search_id: job.search_id ?? '',

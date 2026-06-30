@@ -5,9 +5,13 @@ import {
   CHART_BUNDLE,
   PUBLIC_DIR,
   RUNS_DIR,
+  getAllJobsSummary,
+  getJobsSinceId,
+  getMaxJobsId,
   getWriteDb,
   getJobPreview,
   listCsvFiles,
+  rowFromDbJob,
 } from './data-access.js';
 import {
   getAllJobsAggregate,
@@ -82,7 +86,7 @@ function buildDashboardHtml(basePath, profileFitEnabled) {
   <span id="botStateBadge" class="idle">idle</span>
   <div id="headerButtons">
     <button id="runOnceBtn" class="run-btn" title="Run one fetch cycle now">▶ Run Once</button>
-    <button id="startBotBtn" class="run-btn" title="Start the bot scheduler (npm start)">▶ Start Bot</button>
+    <button id="startBotBtn" class="run-btn" title="Start the bot scheduler (npm run bot)">▶ Start Bot</button>
     <button id="stopBotBtn"  class="run-btn stop" title="Stop the running process" style="display:none">■ Stop</button>
   </div>
 </header>
@@ -99,17 +103,13 @@ function buildDashboardHtml(basePath, profileFitEnabled) {
       <pre id="logPanel"></pre>
     </div>
   </section>
-  <section class="section" data-section="trend" id="trendSection" style="display:none">
+  <section class="section open section-toggle-none" data-section="table" id="dataTableSection">
     <div class="section-header">
       <span class="chev">▶</span>
-      <h2>Notify rate — recent runs
-        <span class="help-tip" data-help="What: Notify rate (% of fetched rows that got through all filters) across the most recent runs, with a trailing 7-run mean baseline. Why: Tell today's run from the baseline at a glance. Read: Flat or rising is healthy; a dip below the baseline means source or filter drift.">?</span>
-      </h2>
-      <span class="section-meta">trend across recent CSV runs</span>
+      <h2>Data table</h2>
+      <span class="section-meta" id="tableSectionMeta">always visible · chart slices and chips cross-filter it</span>
     </div>
-    <div class="section-body">
-      <div class="chart-wrap tall"><canvas id="cTrend"></canvas></div>
-    </div>
+    <div class="section-body" id="dataTableBody"></div>
   </section>
 </div>
 <main id="main">
@@ -284,9 +284,27 @@ export function createDashboardServer({ port, host, token, basePath }) {
 
     if (pathname === '/api/data/all') {
       try {
+        const sinceId = Number(url.searchParams.get('since') || 0);
+        if (sinceId > 0) {
+          const newRows = getJobsSinceId(sinceId).map(rowFromDbJob);
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ delta: true, maxId: getMaxJobsId(), rows: newRows }));
+          return;
+        }
         const data = getAllJobsAggregate();
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify(data));
+      } catch (e) {
+        res.writeHead(500); res.end(e.message);
+      }
+      return;
+    }
+
+    if (pathname === '/api/summary') {
+      try {
+        const summary = getAllJobsSummary();
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(summary));
       } catch (e) {
         res.writeHead(500); res.end(e.message);
       }
