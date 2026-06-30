@@ -24,7 +24,9 @@ import {
   readLiveStatus,
   runSendPending,
   startBot,
+  startPm2LogTail,
   stopBot,
+  stopPm2LogTail,
 } from './bot-process.js';
 import { hasDiscordBotConfig, hasDiscordWebhookConfig, env as appEnv } from '../config.js';
 import { tokenOk } from './auth.js';
@@ -206,7 +208,14 @@ export function createDashboardServer({ port, host, token, basePath }) {
       res.write(`data: ${JSON.stringify({ type: 'status', status: getBotStatus() })}\n\n`);
       const sseClients = getSseClients();
       sseClients.add(res);
-      req.on('close', () => sseClients.delete(res));
+      // Tail the bot log so SSE delivers log lines even when the bot is
+      // PM2-managed (in which case its stdout is not a child of this process).
+      startPm2LogTail(appConfig.logFilePath);
+      req.on('close', () => {
+        sseClients.delete(res);
+        // If no more listeners, stop the tail to avoid idle work.
+        if (sseClients.size === 0) stopPm2LogTail();
+      });
       return;
     }
 

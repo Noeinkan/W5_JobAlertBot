@@ -210,6 +210,58 @@ export function getSseClients() {
   return sseClients;
 }
 
+// Tail the bot's log file and push new bytes to all SSE clients. Used when the
+// bot is PM2-managed (so its stdout isn't a child of this process) and the
+// dashboard's Bot log panel would otherwise stay empty.
+const PM2_LOG_TAIL_INTERVAL_MS = 1000;
+const PM2_LOG_TAIL_MAX_CHUNK = 64 * 1024;
+let pm2LogTail = null; // { path, timer, offset }
+
+export function startPm2LogTail(logPath) {
+  stopPm2LogTail();
+  if (!logPath) return;
+  const initialOffset = (() => {
+    try { return fs.statSync(logPath).size; } catch { return 0; }
+  })();
+  pm2LogTail = { path: logPath, timer: null, offset: initialOffset };
+  const tick = () => {
+    const state = pm2LogTail;
+    if (!state) return;
+    let size;
+    try { size = fs.statSync(state.path).size; }
+    catch { state.timer = setTimeout(tick, PM2_LOG_TAIL_INTERVAL_MS); return; }
+    // Log rotated/truncated: reset and start from the top of the new file.
+    if (size < state.offset) state.offset = 0;
+    if (size === state.offset) {
+      state.timer = setTimeout(tick, PM2_LOG_TAIL_INTERVAL_MS);
+      return;
+    }
+    const end = Math.min(size, state.offset + PM2_LOG_TAIL_MAX_CHUNK);
+    const stream = fs.createReadStream(state.path, { start: state.offset, end: end - 1 });
+    stream.on('data', chunk => {
+      pushSSE({ type: 'log', line: chunk.toString() });
+    });
+    stream.on('close', () => {
+      state.offset = end;
+      if (size > end) {
+        // More to read this tick — schedule another pass immediately.
+        state.timer = setTimeout(tick, 0);
+      } else {
+        state.timer = setTimeout(tick, PM2_LOG_TAIL_INTERVAL_MS);
+      }
+    });
+    stream.on('error', () => {
+      state.timer = setTimeout(tick, PM2_LOG_TAIL_INTERVAL_MS);
+    });
+  };
+  pm2LogTail.timer = setTimeout(tick, PM2_LOG_TAIL_INTERVAL_MS);
+}
+
+export function stopPm2LogTail() {
+  if (pm2LogTail?.timer) clearTimeout(pm2LogTail.timer);
+  pm2LogTail = null;
+}
+
 // Status must be read fresh on each /api/bot/status call when PM2 is in use.
 export async function readLiveStatus() {
   const hasPm2 = await probePm2();
