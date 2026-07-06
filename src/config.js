@@ -219,8 +219,8 @@ function resolveSourceMaxResultsPerQuery() {
 
 export const appConfig = {
   timezone: 'Europe/Rome',
-  scheduleExpression: '0 1,7,13,19 * * *',
-  scheduleHours: [1, 7, 13, 19],
+  scheduleExpression: '0 9,18 * * *',
+  scheduleHours: [9, 18],
   dataDir,
   dbPath: path.join(dataDir, 'jobs.db'),
   logsDir: path.resolve(process.cwd(), 'logs'),

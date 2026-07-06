@@ -311,7 +311,7 @@ export function createDashboardServer({ port, host, token, basePath }) {
           } else if (counts.unnotified > 0) {
             diagnosis.hints.push('There are unnotified rows but all have filter_reason set. Inspect the "filtered" count by reason below.');
           } else {
-            diagnosis.hints.push('Nothing left to send. Every job has been notified. Wait for the next cron tick (01:00/07:00/13:00/19:00 Europe/London) or trigger Run Once.');
+            diagnosis.hints.push('Nothing left to send. Every job has been notified. Wait for the next cron tick (09:00/18:00 Europe/Rome) or trigger Run Once.');
           }
         }
         res.writeHead(200, { 'Content-Type': 'application/json' });
