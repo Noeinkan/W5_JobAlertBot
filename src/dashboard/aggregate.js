@@ -5,6 +5,7 @@ import {
   makeJobKey,
   rowFromDbJob,
 } from './data-access.js';
+import { parseFlexibleDate } from '../utils/dates.js';
 
 // ── CSV parser ────────────────────────────────────────────────────────────────
 function parseCsv(raw) {
@@ -227,9 +228,8 @@ export function aggregate(rows) {
 }
 
 function parseIsoDate(value) {
-  if (!value) return null;
-  const d = new Date(value);
-  return Number.isNaN(d.getTime()) ? null : d;
+  const ts = parseFlexibleDate(value);
+  return ts == null ? null : new Date(ts);
 }
 
 function getRowDate(row) {

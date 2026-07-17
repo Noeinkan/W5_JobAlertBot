@@ -19,6 +19,7 @@ Node.js 20+, ESM, discord.js v14, better-sqlite3, axios, node-cron, dotenv, fast
 | `src/utils/http.js` | Retry helper |
 | `src/utils/logger.js` | File and console logging |
 | `src/utils/salary.js` | Salary parsing and contract detection |
+| `src/utils/dates.js` | `posted_at` date parsing/normalization (ISO + UK `DD/MM/YYYY`), shared by ingest and dashboard aggregation |
 | `src/utils/search.js` | Search and source filtering |
 | `src/utils/seniority.js` | Seniority level detection |
 | `src/utils/relevance.js` | Keyword relevance pre-filter (used inside adapters) |
@@ -31,6 +32,7 @@ Node.js 20+, ESM, discord.js v14, better-sqlite3, axios, node-cron, dotenv, fast
 | `src/dashboard/data-access.js` | Read-only DB access + job row shaping for UI |
 | `src/dashboard/aggregate.js` | Cached aggregates + merge **applied** / **discarded** from SQLite |
 | `scripts/backfill-extractors.js` | Backfill extraction columns on existing rows |
+| `scripts/backfill-posted-at.js` | Normalize legacy non-ISO `posted_at` values (e.g. Reed `DD/MM/YYYY`) to ISO |
 | `data/searches.json` | Search definitions, reloaded on every run |
 | `deploy.sh` | Deploy/sync helper (production workflow) |
 
@@ -55,6 +57,7 @@ Node.js 20+, ESM, discord.js v14, better-sqlite3, axios, node-cron, dotenv, fast
 - `npm test` — test suite 
 - `npm run dashboard` — dashboard server (default port **3099**; alias of `npm start`) 
 - `npm run backfill:extractors` — backfill extraction fields on existing DB rows
+- `npm run backfill:posted-at` — normalize legacy non-ISO `posted_at` values to ISO (`-- --dry-run` to preview)
 
 ## Data Model
 

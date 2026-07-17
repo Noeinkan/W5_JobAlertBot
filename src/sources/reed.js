@@ -5,6 +5,7 @@ import { buildSalaryInfo } from '../utils/salary.js';
 import { isRelevantJob } from '../utils/relevance.js';
 import { logger } from '../utils/logger.js';
 import { maxRawListingsPerQuery } from '../utils/sourcePagination.js';
+import { normalizePostedAt } from '../utils/dates.js';
 
 const baseUrl = 'https://www.reed.co.uk/api/1.0/search';
 
@@ -77,7 +78,9 @@ export const reedSource = {
           salaryText: salaryInfo.salaryText,
           isContract: salaryInfo.isContract,
           url: item.jobUrl,
-          postedAt: item.date ?? null,
+          // Reed returns UK-style DD/MM/YYYY; normalize to ISO so downstream
+          // date parsing (filters, sort, chart bucketing) stays consistent.
+          postedAt: normalizePostedAt(item.date ?? null),
           searchId: search.id,
           description,
         });

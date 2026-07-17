@@ -534,28 +534,35 @@ function initSectionToggles() {
   });
 }
 
-/** Sources persist assorted strings in posted_at (ISO, API-native, etc.) — show uniformly as DD/MM/YYYY. */
-function formatUkDateDdMmYyyy(raw) {
-  if (raw == null || raw === '') return '';
+// Mirror of src/utils/dates.js parseFlexibleDate — this file is served as a
+// classic script and can't import ES modules, so the logic is duplicated. Keep
+// the two in sync. Understands ISO 8601 plus UK-style DD/MM/YYYY (Reed), and
+// never misreads the latter as US MM/DD.
+const UK_DATE_RE = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/;
+function parseFlexibleDate(raw) {
+  if (raw == null || raw === '') return null;
   const s = String(raw).trim();
-  const parsed = Date.parse(s);
-  if (!Number.isNaN(parsed)) {
-    const d = new Date(parsed);
-    if (!Number.isNaN(d.getTime())) {
-      return d.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
-    }
-  }
-  const m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  const m = s.match(UK_DATE_RE);
   if (m) {
     const day = parseInt(m[1], 10);
     const month = parseInt(m[2], 10) - 1;
     const year = parseInt(m[3], 10);
-    const d = new Date(year, month, day);
-    if (d.getFullYear() === year && d.getMonth() === month && d.getDate() === day) {
-      return d.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
-    }
+    const ts = Date.UTC(year, month, day);
+    const d = new Date(ts);
+    if (d.getUTCFullYear() === year && d.getUTCMonth() === month && d.getUTCDate() === day) return ts;
+    return null; // matched shape but invalid calendar date
   }
-  return s;
+  const t = Date.parse(s);
+  return Number.isNaN(t) ? null : t;
+}
+
+/** Sources persist assorted strings in posted_at (ISO, API-native, etc.) — show uniformly as DD/MM/YYYY. */
+function formatUkDateDdMmYyyy(raw) {
+  const ts = parseFlexibleDate(raw);
+  if (ts == null) return raw == null ? '' : String(raw).trim();
+  // Render in UTC so a DD/MM/YYYY value (stored at UTC midnight) shows the same
+  // calendar day regardless of the viewer's timezone.
+  return new Date(ts).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'UTC' });
 }
 
 // ── Table state ───────────────────────────────────────────────────────────────
@@ -593,10 +600,9 @@ let hideOldJobs = loadHideOldJobsPref();
 
 /** True iff row.posted_at parses as a date older than the 2-month threshold. */
 function isPostedOlderThan2Months(row, cutoffTs) {
-  const v = row && row.posted_at;
-  if (v == null || v === '') return false; // never silently hide unknown dates
-  const t = Date.parse(String(v));
-  return !Number.isNaN(t) && t < cutoffTs;
+  const t = parseFlexibleDate(row && row.posted_at);
+  if (t == null) return false; // never silently hide unknown/unparseable dates
+  return t < cutoffTs;
 }
 
 /** Distinct non-empty values for a column — Excel-style filter source (full dataset, not filtered view). */
@@ -658,13 +664,8 @@ function getVisible() {
   if (sortCol) {
     rows = [...rows].sort((a, b) => {
       if (sortCol === 'posted_at' || sortCol === 'found_at') {
-        const parseTs = v => {
-          if (v == null || v === '') return null;
-          const t = Date.parse(String(v));
-          return Number.isNaN(t) ? null : t;
-        };
-        const ka = parseTs(a[sortCol]);
-        const kb = parseTs(b[sortCol]);
+        const ka = parseFlexibleDate(a[sortCol]);
+        const kb = parseFlexibleDate(b[sortCol]);
         let cmp;
         if (ka == null && kb == null) cmp = 0;
         else if (ka == null) cmp = 1;
