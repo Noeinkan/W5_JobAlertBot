@@ -70,7 +70,7 @@ Searches are defined in `data/searches.json` and reloaded on every run — no re
 
 ### Two Delivery Modes
 
-**Bot mode** — long-running process. Schedules two runs per day at 09:00 and 18:00 (Europe/Rome). Supports Discord slash commands for on-demand control.
+**Bot mode** — long-running process. Schedules two runs per day at 09:00 and 18:00 (`Europe/Rome`). Supports Discord slash commands for on-demand control.
 
 **One-shot mode** — runs a single cycle via webhook and exits. Suitable for cron jobs, CI pipelines, or manual use.
 

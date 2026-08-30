@@ -81,7 +81,13 @@ function buildDashboardHtml(basePath, profileFitEnabled) {
 <script src="${bp}/vendor/chart.umd.js"></script>
 <script>window.__DASHBOARD_BASE__=${JSON.stringify(basePath)};</script>
 <script>window.__PROFILE_FIT_ENABLED__=${JSON.stringify(profileFitEnabled)};</script>
-<script src="${bp}/dashboard-app.js" defer></script>
+<script src="${bp}/js/app-core.js" defer></script>
+<script src="${bp}/js/app-charts.js" defer></script>
+<script src="${bp}/js/app-filters.js" defer></script>
+<script src="${bp}/js/app-table.js" defer></script>
+<script src="${bp}/js/app-render.js" defer></script>
+<script src="${bp}/js/app-explorer.js" defer></script>
+<script src="${bp}/js/app-bootstrap.js" defer></script>
 </head>
 <body>
 <header>
@@ -171,8 +177,10 @@ export function createDashboardServer({ port, host, token, basePath }) {
       return;
     }
 
-    if (pathname === '/dashboard-app.js') {
-      serveStatic(res, path.join(PUBLIC_DIR, 'dashboard-app.js'), 'application/javascript; charset=utf-8');
+    // dashboard-app.js was split into ordered classic scripts under public/js/.
+    // path.basename() strips any ../ traversal, keeping reads inside public/js.
+    if (pathname.startsWith('/js/') && pathname.endsWith('.js')) {
+      serveStatic(res, path.join(PUBLIC_DIR, 'js', path.basename(pathname)), 'application/javascript; charset=utf-8');
       return;
     }
 
@@ -311,7 +319,8 @@ export function createDashboardServer({ port, host, token, basePath }) {
           } else if (counts.unnotified > 0) {
             diagnosis.hints.push('There are unnotified rows but all have filter_reason set. Inspect the "filtered" count by reason below.');
           } else {
-            diagnosis.hints.push('Nothing left to send. Every job has been notified. Wait for the next cron tick (09:00/18:00 Europe/Rome) or trigger Run Once.');
+            const scheduleLabel = appConfig.scheduleHours.map((h) => `${String(h).padStart(2, '0')}:00`).join('/');
+            diagnosis.hints.push(`Nothing left to send. Every job has been notified. Wait for the next cron tick (${scheduleLabel} ${appConfig.timezone}) or trigger Run Once.`);
           }
         }
         res.writeHead(200, { 'Content-Type': 'application/json' });

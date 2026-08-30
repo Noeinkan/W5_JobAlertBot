@@ -170,7 +170,7 @@ This mode:
 - logs into Discord
 - registers slash commands
 - initializes `data/jobs.db`
-- schedules runs at fixed London-time slots
+- schedules runs at 09:00 and 18:00 Europe/Rome
 - optionally runs immediately if `STARTUP_RUN_ON_BOOT=true`
 
 ### Run a one-shot search
@@ -233,12 +233,10 @@ If `DISCORD_GUILD_ID` is set, commands are registered at guild scope. Otherwise 
 
 ## Schedule
 
-The schedule is fixed in code to `Europe/London` at:
+The schedule is fixed in code to `Europe/Rome` at:
 
-- 01:00
-- 07:00
-- 13:00
-- 19:00
+- 09:00
+- 18:00
 
 ## Search Configuration
 

@@ -65,7 +65,7 @@ Place the new migration block *after* existing migrations for the same table (so
 
 - `src/dashboard/data-access.js`: extend the row-shaping function (e.g. `shapeJobRow`) so the new column flows into the UI. This file is the **read contract** between SQLite and the frontend.
 - `src/dashboard/aggregate.js`: extend any cached aggregate query that surfaces the new column (e.g. per-source counts, per-run rollups).
-- `src/dashboard/public/dashboard-app.js` + `dashboard.css`: add a UI column / chart only if the user asked for visibility. Skip if the column is internal.
+- `src/dashboard/public/js/*.js` + `dashboard.css`: add a UI column / chart only if the user asked for visibility. Skip if the column is internal. A new table column is defined in `COL_DEFS` (`app-core.js`) and rendered in `app-table.js`; charts live in `app-render.js` / `app-explorer.js`. These are ordered classic scripts sharing one global scope (loaded from `buildDashboardHtml()` in `server.js`), not ES modules — no import/export.
 
 ### D. Scoring/extractor fields (specific gotcha)
 

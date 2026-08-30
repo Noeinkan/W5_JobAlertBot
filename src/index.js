@@ -133,18 +133,18 @@ function getNextRunText() {
   const nextHour = appConfig.scheduleHours.find((hour) => hour > currentHour || (hour === currentHour && currentMinute === 0));
 
   if (nextHour != null && !(nextHour === currentHour && currentMinute === 0)) {
-    return `today, ${String(nextHour).padStart(2, '0')}:00 Europe/Rome`;
+    return `today, ${String(nextHour).padStart(2, '0')}:00 ${appConfig.timezone}`;
   }
 
   if (nextHour != null) {
     const following = appConfig.scheduleHours.find((hour) => hour > currentHour);
 
     if (following != null) {
-      return `today, ${String(following).padStart(2, '0')}:00 Europe/Rome`;
+      return `today, ${String(following).padStart(2, '0')}:00 ${appConfig.timezone}`;
     }
   }
 
-  return `tomorrow after ${currentDay} ${currentMonth}, ${String(appConfig.scheduleHours[0]).padStart(2, '0')}:00 Europe/Rome`;
+  return `tomorrow after ${currentDay} ${currentMonth}, ${String(appConfig.scheduleHours[0]).padStart(2, '0')}:00 ${appConfig.timezone}`;
 }
 
 function getEnabledSourceNames() {

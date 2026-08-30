@@ -38,7 +38,7 @@ Node.js 20+, ESM, discord.js v14, better-sqlite3, axios, node-cron, dotenv, fast
 
 ## Runtime Modes
 
-**Bot mode** (`DISCORD_TOKEN` + `DISCORD_CHANNEL_ID`): long-running; schedules runs at 01:00/07:00/13:00/19:00 Europe/London. Set `STARTUP_RUN_ON_BOOT=true` to run immediately on start.
+**Bot mode** (`DISCORD_TOKEN` + `DISCORD_CHANNEL_ID`): long-running; schedules runs at 09:00/18:00 Europe/Rome. Set `STARTUP_RUN_ON_BOOT=true` to run immediately on start.
 
 **One-shot** (`DISCORD_WEBHOOK_URL` + `npm run once` or `RUN_ONCE=true`): single cycle then exits. Does not start the scheduler.
 

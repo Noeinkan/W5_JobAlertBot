@@ -11,3 +11,5 @@ logs/
 
 # Local scratch / ad-hoc files (queries, debug dumps, one-off notes)
 .scratch/
+
+.shots/
