@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-Node.js Discord bot for UK job alerts. Fetches from **25** sources (Adzuna, Reed, Serper, LinkedIn, Jooble, Careerjet, Guardian Jobs, JobServe, Construction Enquirer, CV-Library, Rise Technical, CIOB Jobs, BIM+ Jobs, Technojobs, Totaljobs, CWJobs, Hays, Michael Page, Matchtech, Morson, Advance TRS, ICE Recruit, Monster, Glassdoor) → normalizes → keyword relevance + **RAG** scoring + seniority/salary gates → description **enrichment** and structured **extraction** → deduplicates in SQLite → notifies Discord. Optional **web dashboard** (aggregates, charts, run logs, job actions) runs as a separate process.
+Node.js Discord bot for UK job alerts. Fetches from **24** sources (Adzuna, Reed, Serper, LinkedIn, Jooble, Careerjet, Guardian Jobs, JobServe, Construction Enquirer, CV-Library, Rise Technical, CIOB Jobs, BIM+ Jobs, Technojobs, Totaljobs, CWJobs, Hays, Michael Page, Matchtech, Morson, Advance TRS, ICE Recruit, Monster, Glassdoor) → normalizes → keyword relevance + **RAG** scoring + seniority/salary gates → description **enrichment** and structured **extraction** → deduplicates in SQLite → notifies Discord. Optional **web dashboard** (aggregates, charts, run logs, job actions) runs as a separate process.
 
 ## Stack
 
@@ -15,7 +15,7 @@ Node.js 20+, ESM, discord.js v14, better-sqlite3, axios, node-cron, dotenv, fast
 | `src/db.js` | Writer connection, inserts, pending jobs, dashboard listing helpers |
 | `src/jobs-schema.js` | `jobs` / `run_log` DDL and **incremental column migrations** (shared with dashboard) |
 | `src/discord.js` | Client, embeds, webhook, command registration |
-| `src/sources/*.js` | **25** source adapters (see `src/index.js` `sourceClients`; shared helpers: `stepstone_platform.js`, `next_data_extract.js`, `browser.js` for JS-rendered pages) |
+| `src/sources/*.js` | **24** source adapters (see `src/index.js` `sourceClients`; shared helpers: `stepstone_platform.js`, `next_data_extract.js`, `browser.js` for JS-rendered pages) |
 | `src/utils/http.js` | Retry helper |
 | `src/utils/logger.js` | File and console logging |
 | `src/utils/salary.js` | Salary parsing and contract detection |

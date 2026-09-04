@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { appConfig, env } from '../config.js';
 import { withRetry } from '../utils/http.js';
-import { getCountryConfig } from '../utils/countries.js';
+import { getCountryConfig, maybeNormalizeCountry } from '../utils/countries.js';
 import { buildSalaryInfo } from '../utils/salary.js';
 import { isRelevantJob } from '../utils/relevance.js';
 import { logger } from '../utils/logger.js';
@@ -11,11 +11,15 @@ const RESULTS_PER_PAGE = 50;
 
 function buildAdzunaParams(search) {
   const keywords = Array.isArray(search.keywords) ? search.keywords.filter(Boolean) : [];
-  const excludeKeywords = Array.isArray(search.exclude_keywords) ? search.exclude_keywords.filter(Boolean) : [];
+  // Adzuna geocodes `where` as a place, so a country-wide location ("United
+  // Kingdom", "Italia") matches nothing and the search returns zero results.
+  // The country is already pinned by the /jobs/<code>/ path, so drop `where`.
+  const nationwide = Boolean(maybeNormalizeCountry(search.location));
+
   const params = {
     app_id: env.adzunaAppId,
     app_key: env.adzunaAppKey,
-    where: search.location,
+    where: nationwide ? undefined : search.location,
     salary_min: search.min_salary ?? undefined,
     category: search.category ?? search.source_options?.adzuna?.category ?? undefined,
     results_per_page: RESULTS_PER_PAGE,
@@ -28,9 +32,10 @@ function buildAdzunaParams(search) {
     params.what_or = keywords.join(',');
   }
 
-  if (excludeKeywords.length > 0) {
-    params.what_exclude = excludeKeywords.join(',');
-  }
+  // `what_exclude` is deliberately not sent. Adzuna splits it into single words,
+  // so a phrase like "entry level" drops every listing containing "level" and
+  // "graduate" drops seniors whose ad mentions a graduate scheme. jobMatchesSearch
+  // applies the same exclusions locally as whole phrases, which is what we want.
 
   return params;
 }

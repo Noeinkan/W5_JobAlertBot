@@ -98,6 +98,60 @@
       "min_salary": 90000
     },
     {
+      "id": "employer_rr_smr",
+      "name": "Rolls-Royce SMR (all roles, relevance-filtered)",
+      "keywords": "Rolls-Royce SMR",
+      "location": "United Kingdom",
+      "distance_from_location": 300
+    },
+    {
+      "id": "employer_gbe_nuclear",
+      "name": "Great British Nuclear / GBE-N",
+      "keywords": "Great British Nuclear",
+      "location": "United Kingdom",
+      "distance_from_location": 300
+    },
+    {
+      "id": "nuclear_configuration_management",
+      "name": "Configuration Management (nuclear)",
+      "keywords": "configuration management nuclear",
+      "location": "United Kingdom",
+      "distance_from_location": 300,
+      "min_salary": 40000
+    },
+    {
+      "id": "nuclear_configuration_engineer",
+      "name": "Configuration Engineer (nuclear)",
+      "keywords": "configuration engineer nuclear",
+      "location": "United Kingdom",
+      "distance_from_location": 300,
+      "min_salary": 40000
+    },
+    {
+      "id": "nuclear_bim",
+      "name": "Nuclear BIM",
+      "keywords": "nuclear BIM",
+      "location": "United Kingdom",
+      "distance_from_location": 300,
+      "min_salary": 40000
+    },
+    {
+      "id": "nuclear_information_manager",
+      "name": "Nuclear Information Manager",
+      "keywords": "nuclear information manager",
+      "location": "United Kingdom",
+      "distance_from_location": 300,
+      "min_salary": 40000
+    },
+    {
+      "id": "smr_information_management",
+      "name": "SMR Information Management",
+      "keywords": "SMR information management",
+      "location": "United Kingdom",
+      "distance_from_location": 300,
+      "min_salary": 40000
+    },
+    {
       "id": "programme_digital_lead",
       "name": "Programme Digital Lead",
       "keywords": "Programme Digital Lead",

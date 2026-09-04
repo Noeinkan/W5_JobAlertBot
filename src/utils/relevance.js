@@ -21,6 +21,13 @@ const REQUIRED_KEYWORDS = [
   'point cloud',
   'aec',
   'infrastructure digital',
+  // Nuclear / SMR configuration and information control vocabulary
+  'configuration management',
+  'configuration manager',
+  'configuration control',
+  'configuration engineer',
+  'asset information',
+  'aveva',
   // Italian BIM/AEC terminology
   'modellazione informativa',
   'gestione informativa',

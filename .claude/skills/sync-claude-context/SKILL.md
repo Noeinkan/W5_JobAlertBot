@@ -1,15 +1,15 @@
 ---
 name: sync-claude-context
-description: Keep the Claude-facing context files (README.md, CLAUDE.md, .claude/project-index.md) and auto-memory in sync with the codebase. Can run after a session or as a full audit based on recent git history. Does NOT touch docs/ (use update-docs) or CHANGELOG.md (use update-changelog).
+description: Keep the Claude-facing context files (README.md, CLAUDE.md, AGENTS.md) and auto-memory in sync with the codebase. Can run after a session or as a full audit based on recent git history.
 ---
 
 # Sync Claude Context
 
-Run after session work **or** as a standalone audit to catch drift between the codebase and the files that give Claude (and new contributors) their mental model of the project: `README.md`, `CLAUDE.md`, `.claude/project-index.md`, plus auto-memory.
+Run after session work **or** as a standalone audit to catch drift between the codebase and the files that give Claude (and new contributors) their mental model of the project: `README.md`, `CLAUDE.md`, `AGENTS.md`, plus auto-memory.
 
 Only update when the change is real and durable — not for in-progress or experimental work.
 
-For sister skills covering other doc surfaces, see [update-docs](../update-docs/SKILL.md) (long-form `docs/` tree) and [update-changelog](../update-changelog/SKILL.md) (`CHANGELOG.md`).
+This repo has no `docs/` tree and no `CHANGELOG.md`: these three files plus `.cursor/rules/job-alert-bot.mdc` are the whole documentation surface.
 
 ## Modes
 
@@ -32,10 +32,12 @@ Then apply the decision rules below to those changes. Skip commits that are pure
 ---
 
 ## When to run
-- After adding a new module, page, route, context, service, or hook
-- After renaming/removing a significant file or directory
-- After changing architectural patterns or critical gotchas
-- After adding/removing npm packages or environment variables
+- After adding or removing a source adapter in `src/sources/`
+- After adding a module under `src/utils/`, `src/dashboard/`, or `scripts/`
+- After a schema change in `src/jobs-schema.js` (new column, new table)
+- After adding or removing a dashboard HTTP endpoint
+- After adding/removing npm packages, npm scripts, or environment variables
+- After changing the production topology (PM2, nginx, ports, bind address)
 - After any change that would make the current docs misleading
 - Periodically (e.g. after 10+ commits) to catch accumulated drift
 
@@ -43,34 +45,36 @@ Then apply the decision rules below to those changes. Skip commits that are pure
 
 ### `README.md`
 Update when:
-- New user-facing features or modules are added
-- Setup steps change (new env vars, new services, new commands)
+- New user-facing features or runtime modes are added
+- Setup steps change (new env vars, new credentials, new commands)
 - The stack changes (new dependency category, removed tool)
-- Port numbers or service topology changes
+- Port numbers, bind address, or dashboard auth behaviour changes
 
 Do NOT update for: internal refactors, bug fixes, test-only changes, style tweaks.
 
 ### `CLAUDE.md`
+This file is **always loaded**, in every session and every subagent. Every line is paid for repeatedly, so it earns its place only if a change would break silently without it.
+
 Update when:
-- A new critical gotcha is discovered (async/sync trap, import restriction, invariant)
-- A new module section is needed (mirrors existing sections like EIR, OIR, DC Manager)
-- A new config file is added that future Claude instances must know about
-- A convention changes (e.g. new naming pattern, new barrel import rule)
-- A new context is introduced (`*Context`, `use*` hook with global scope)
-- Directory structure changes in a way that makes the Layout section wrong
+- A new critical gotcha is discovered (sync-only `better-sqlite3`, inode-tracking bind mounts, ESM-only imports)
+- The **Key Files** table becomes wrong — a listed file moved, or a new file owns a responsibility the table claims elsewhere
+- The source count changes — the number in the intro line and in the `src/sources/*.js` row must both match `sourceClients` in `src/index.js`
+- The normalized job shape or a persisted field set changes
+- A runtime mode, npm script, or env var changes
+- Production topology changes (host, PM2 process names, nginx vhost, TLS)
 
-Do NOT update for: implementation details already visible from the code, one-off fixes.
+Do NOT update for: implementation details already visible from the code, one-off fixes, or a new file that fits an existing table row.
 
-### `.claude/project-index.md`
+### `AGENTS.md`
+The short entry point for non-Claude agents; some tools read only this file. It restates a subset of `CLAUDE.md` on purpose — keep the overlap consistent rather than removing it.
+
 Update when:
-- A new directory is created under `src/` or `server/` with a distinct purpose
-- A new API route group is added (new prefix like `/api/capability-assessments`)
-- A new React context or hook with cross-component scope is introduced
-- A new schema file is added to `src/schemas/`
-- A new service file is added to `server/services/` or `src/services/`
-- An existing entry becomes inaccurate (wrong path, wrong description)
+- An npm script is added, removed, or renamed
+- A convention in the Conventions list changes
+- The source count changes (must match `CLAUDE.md`)
+- The validation command changes
 
-Do NOT update for: changes within an already-indexed directory that don't alter its purpose description.
+Do NOT update for: anything that only affects the detail sections of `CLAUDE.md`.
 
 ---
 
@@ -80,24 +84,30 @@ Do NOT update for: changes within an already-indexed directory that don't alter 
    - *Session mode:* list every file created, modified, or deleted in this conversation. Group by: new, changed, deleted.
    - *Git mode:* run `git log --oneline -20`. For commits not yet reflected in docs, run `git show --stat <sha>` to get file lists. Summarise each commit in one line.
 
-2. **Filter noise** — drop from consideration: `*.test.*`, `*.spec.*`, `build/`, `node_modules/`, formatting-only diffs, and reverts of already-audited commits.
+2. **Filter noise** — drop from consideration: `*.test.*`, `test/`, formatting-only diffs, `data/`, `logs/`, and reverts of already-audited commits.
 
 3. **Evaluate each document** — for each of the three docs, apply the decision rules above. Output a one-line verdict:
    - `README.md: UPDATE — reason` or `README.md: SKIP — reason`
    - `CLAUDE.md: UPDATE — reason` or `CLAUDE.md: SKIP — reason`
-   - `project-index.md: UPDATE — reason` or `project-index.md: SKIP — reason`
+   - `AGENTS.md: UPDATE — reason` or `AGENTS.md: SKIP — reason`
 
 4. **Read before editing** — for each doc marked UPDATE, read the current file first. Never overwrite content that is still accurate.
 
 5. **Apply minimal edits** — add or update only the sections affected. Do not reformat, reorganise, or expand unrelated sections. Use the existing style and heading level.
 
-6. **Verify** — after edits, re-read the changed sections and confirm they are accurate and consistent with each other (e.g. a new route in project-index should match any mention in CLAUDE.md).
+6. **Verify claims against the code, not against the other doc.** Every number, path, and command you write must come from a file you opened in this session:
+   - source count → the `sourceClients` array in `src/index.js`
+   - npm scripts → the `scripts` block in `package.json`
+   - file paths → the filesystem
+   - ports and bind defaults → `src/dashboard.js` and `ecosystem.config.cjs`
 
-7. **Update auto-memory** — if the audit surfaced a new critical pattern, gotcha, or non-obvious invariant not already in memory, add or update the relevant entry in `~/.claude/projects/c--Users-andre-Downloads-W3-capsar-io/memory/`. Skip if nothing new was learned.
+   Then confirm `CLAUDE.md` and `AGENTS.md` agree with each other where they overlap.
+
+7. **Update auto-memory** — if the audit surfaced a new critical pattern, gotcha, or non-obvious invariant not already in memory, add or update the relevant entry in `~/.claude/projects/c--Users-andre-Downloads-W5-JobAlertBot/memory/`. Skip if nothing new was learned.
 
 ---
 
 ## What never changes
-- Do not alter the "Token optimization" or "Commands" sections in CLAUDE.md unless the commands themselves changed.
-- Do not change the project-index architecture diagram unless ports or services actually changed.
+- Do not alter the "Commands" section in `CLAUDE.md` unless `package.json` scripts actually changed.
+- Do not add rows to the `CLAUDE.md` Key Files table for files that fit an existing row — the table maps responsibilities, not the filesystem.
 - Do not add speculative or "planned" content — only document what exists now.

@@ -5,6 +5,7 @@
 import 'dotenv/config';
 import { spawn } from 'node:child_process';
 import { createDashboardServer } from './dashboard/server.js';
+import { sweepStaleOneShots } from './dashboard/bot-process.js';
 
 const portArg = process.argv.indexOf('--port');
 const PORT = portArg !== -1 ? parseInt(process.argv[portArg + 1], 10) : 3099;
@@ -37,6 +38,14 @@ server.listen(PORT, HOST, () => {
     && !headlessLinux
     && (HOST === '0.0.0.0' || LOOPBACK_HOSTS.has(HOST));
   if (shouldOpen) openBrowser(url);
+
+  // Clear out one-shot runs left behind by a previous dashboard (or by an older build
+  // that started them without --no-autorestart, which made them loop and notify forever).
+  sweepStaleOneShots()
+    .then(({ swept }) => {
+      if (swept.length) console.log(`Removed ${swept.length} stale one-shot PM2 entr${swept.length === 1 ? 'y' : 'ies'}: ${swept.join(', ')}`);
+    })
+    .catch(err => console.log(`One-shot sweep skipped (${err.message}).`));
 });
 
 function openBrowser(url) {

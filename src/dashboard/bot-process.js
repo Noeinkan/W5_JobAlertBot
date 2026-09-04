@@ -8,6 +8,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.join(__dirname, '..', '..');
 
 const PM2_APP_NAME = process.env.PM2_APP_NAME || 'job-alert-bot';
+const ONESHOT_PREFIX = `${PM2_APP_NAME}-oneshot-`;
 
 // PM2 availability heuristic: works on most prod boxes where pm2 is on PATH.
 let pm2Available = null;
@@ -79,29 +80,46 @@ async function startViaPm2(mode) {
   const isOnce = mode === 'once';
   if (isOnce) {
     // One-shot: start a transient copy with a different name so it doesn't collide
-    // with the persistent daemon. PM2 will exit it when the script exits.
-    const tmpName = `${PM2_APP_NAME}-oneshot-${Date.now()}`;
+    // with the persistent daemon. `--no-autorestart` is mandatory here: without it
+    // PM2 treats the clean exit of the one-shot as a crash and relaunches it forever,
+    // turning a single manual run into a Discord alert every few minutes.
+    const tmpName = `${ONESHOT_PREFIX}${Date.now()}`;
     await runPm2([
       'start', 'src/index.js',
       '--name', tmpName,
-      '--interpreter', 'node',
+      '--no-autorestart',
+      // Same Node that runs the dashboard: on machines with several Node installs a
+      // bare `node` can resolve to a version the native addons were not built for.
+      '--interpreter', process.execPath,
       '--node-args', '--enable-source-maps',
       '--', '--once',
     ]);
     setStatus({ state: 'running', mode: 'once', startedAt: new Date().toISOString(), managedBy: 'pm2' });
     // Poll once to capture exit when the one-shot ends.
     const pollUntil = Date.now() + 5 * 60_000;
+    const finish = (exitCode) => {
+      setStatus({ state: 'done', exitCode });
+      // Best-effort cleanup: a `--no-autorestart` app lingers as a stopped entry.
+      runPm2(['delete', tmpName]).catch(() => {});
+    };
     const tick = async () => {
-      if (Date.now() > pollUntil) return;
+      if (Date.now() > pollUntil) {
+        finish(null);
+        return;
+      }
       await refreshPm2Status();
       const { code, stdout } = await runPm2(['jlist', '--json', '--no-color']);
       try {
         const list = JSON.parse(stdout);
         const still = Array.isArray(list) && list.find(p => p.name === tmpName);
+        // Entry gone, or present but no longer running: the one-shot is over.
         if (!still) {
-          setStatus({ state: 'done', exitCode: 0 });
-          // Best-effort cleanup of the transient entry.
-          runPm2(['delete', tmpName]).catch(() => {});
+          finish(0);
+          return;
+        }
+        const st = still.pm2_env?.status;
+        if (st === 'stopped' || st === 'errored') {
+          finish(still.pm2_env?.exit_code ?? 0);
           return;
         }
       } catch { /* ignore */ }
@@ -120,11 +138,45 @@ async function startViaPm2(mode) {
   return true;
 }
 
+/**
+ * Delete leftover `<app>-oneshot-*` PM2 entries at dashboard startup.
+ *
+ * A one-shot is transient by definition, so any entry that is no longer online is
+ * dead weight. An entry that *has restarted* is worse than dead weight: it is the
+ * runaway loop this guard exists for — a one-shot started without `--no-autorestart`
+ * relaunches on every clean exit and keeps notifying Discord forever. A freshly
+ * started, never-restarted one-shot is left alone.
+ *
+ * Returns { swept: string[], skipped?: 'no-pm2' }.
+ */
+export async function sweepStaleOneShots() {
+  const hasPm2 = await probePm2();
+  if (!hasPm2) return { swept: [], skipped: 'no-pm2' };
+  const { code, stdout } = await runPm2(['jlist', '--json', '--no-color']);
+  if (code !== 0) return { swept: [] };
+  let list;
+  try { list = JSON.parse(stdout); } catch { return { swept: [] }; }
+  if (!Array.isArray(list)) return { swept: [] };
+
+  const swept = [];
+  for (const entry of list) {
+    const name = entry?.name;
+    if (typeof name !== 'string' || !name.startsWith(ONESHOT_PREFIX)) continue;
+    const online = entry.pm2_env?.status === 'online';
+    const restarted = (entry.pm2_env?.restart_time ?? 0) > 0;
+    if (online && !restarted) continue;
+    await runPm2(['delete', name]);
+    swept.push(name);
+  }
+  if (swept.length) await runPm2(['save']);
+  return { swept };
+}
+
 // Dev-only fallback: keep the legacy child_process.spawn behaviour when PM2 isn't installed.
 async function startViaSpawn(mode) {
   if (botProc) return false;
   const isOnce = mode === 'once';
-  botProc = spawn('node', ['src/index.js'], {
+  botProc = spawn(process.execPath, ['src/index.js'], {
     cwd:  projectRoot,
     env:  { ...process.env, RUN_ONCE: isOnce ? 'true' : '' },
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -175,7 +227,7 @@ export function getBotStatus() {
  */
 export function runSendPending({ trigger = 'dashboard' } = {}) {
   if (botProc) return { ok: false, reason: 'bot_running' };
-  const child = spawn('node', ['scripts/send-pending.js', '--trigger', trigger], {
+  const child = spawn(process.execPath, ['scripts/send-pending.js', '--trigger', trigger], {
     cwd: projectRoot,
     stdio: ['ignore', 'pipe', 'pipe'],
   });
